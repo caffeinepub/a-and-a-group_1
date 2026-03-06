@@ -29,7 +29,7 @@ actor {
 
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access profiles");
+      Runtime.trap("Unauthorized: Only users can view profiles");
     };
     userProfiles.get(caller);
   };
@@ -46,6 +46,203 @@ actor {
       Runtime.trap("Unauthorized: Only users can save profiles");
     };
     userProfiles.add(caller, profile);
+  };
+
+  // Orders
+  type OrderRecord = {
+    id : Nat;
+    orderId : Text;
+    name : Text;
+    email : Text;
+    whatsappNumber : Text;
+    service : Text;
+    projectDetails : Text;
+    budget : Text;
+    deadline : Text;
+    status : Text;
+    paymentStatus : Text;
+    createdAt : Int;
+    screenshotBlobId : ?Text;
+  };
+
+  let orders = Map.empty<Nat, OrderRecord>();
+  var nextOrderId = 1;
+
+  public shared func submitOrder(
+    orderId : Text,
+    name : Text,
+    email : Text,
+    whatsappNumber : Text,
+    service : Text,
+    projectDetails : Text,
+    budget : Text,
+    deadline : Text,
+  ) : async Nat {
+    let id = nextOrderId;
+    let order : OrderRecord = {
+      id;
+      orderId;
+      name;
+      email;
+      whatsappNumber;
+      service;
+      projectDetails;
+      budget;
+      deadline;
+      status = "pending";
+      paymentStatus = "pending";
+      createdAt = Time.now();
+      screenshotBlobId = null;
+    };
+    orders.add(id, order);
+    nextOrderId += 1;
+    id;
+  };
+
+  public query ({ caller }) func getOrderByOrderId(orderId : Text) : async ?OrderRecord {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only authenticated users can view orders");
+    };
+    let iter = orders.values();
+    let result = iter.find(
+      func(order) {
+        order.orderId == orderId;
+      }
+    );
+    switch (result) {
+      case (null) { null };
+      case (?order) {
+        // Users can only view their own orders, admins can view all
+        if (AccessControl.isAdmin(accessControlState, caller)) {
+          ?order;
+        } else {
+          // Check if the caller's profile email matches the order email
+          switch (userProfiles.get(caller)) {
+            case (null) { Runtime.trap("Unauthorized: User profile not found") };
+            case (?profile) {
+              if (profile.name == order.email) {
+                ?order;
+              } else {
+                Runtime.trap("Unauthorized: Can only view your own orders");
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+
+  public query ({ caller }) func getOrdersByEmail(email : Text) : async [OrderRecord] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only authenticated users can view orders");
+    };
+    // Users can only view their own orders, admins can view all
+    if (not AccessControl.isAdmin(accessControlState, caller)) {
+      // Check if the caller's profile email matches the requested email
+      switch (userProfiles.get(caller)) {
+        case (null) { Runtime.trap("Unauthorized: User profile not found") };
+        case (?profile) {
+          if (profile.name != email) {
+            Runtime.trap("Unauthorized: Can only view your own orders");
+          };
+        };
+      };
+    };
+    let filtered = List.empty<OrderRecord>();
+    let iter = orders.values();
+    iter.forEach(
+      func(order) {
+        if (order.email == email) {
+          filtered.add(order);
+        };
+      }
+    );
+    filtered.toArray();
+  };
+
+  public query ({ caller }) func listAllOrders() : async [OrderRecord] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can list all orders");
+    };
+    orders.values().toArray();
+  };
+
+  public shared ({ caller }) func updateOrderStatus(id : Nat, status : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can update order status");
+    };
+    switch (orders.get(id)) {
+      case (null) { Runtime.trap("Order not found") };
+      case (?order) {
+        let updatedOrder : OrderRecord = {
+          id = order.id;
+          orderId = order.orderId;
+          name = order.name;
+          email = order.email;
+          whatsappNumber = order.whatsappNumber;
+          service = order.service;
+          projectDetails = order.projectDetails;
+          budget = order.budget;
+          deadline = order.deadline;
+          status;
+          paymentStatus = order.paymentStatus;
+          createdAt = order.createdAt;
+          screenshotBlobId = order.screenshotBlobId;
+        };
+        orders.add(id, updatedOrder);
+      };
+    };
+  };
+
+  public shared ({ caller }) func updateOrderPaymentStatus(id : Nat, paymentStatus : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can update payment status");
+    };
+    switch (orders.get(id)) {
+      case (null) { Runtime.trap("Order not found") };
+      case (?order) {
+        let updatedOrder : OrderRecord = {
+          id = order.id;
+          orderId = order.orderId;
+          name = order.name;
+          email = order.email;
+          whatsappNumber = order.whatsappNumber;
+          service = order.service;
+          projectDetails = order.projectDetails;
+          budget = order.budget;
+          deadline = order.deadline;
+          status = order.status;
+          paymentStatus;
+          createdAt = order.createdAt;
+          screenshotBlobId = order.screenshotBlobId;
+        };
+        orders.add(id, updatedOrder);
+      };
+    };
+  };
+
+  public shared func updateOrderScreenshot(id : Nat, screenshotBlobId : Text) : async () {
+    switch (orders.get(id)) {
+      case (null) { Runtime.trap("Order not found") };
+      case (?order) {
+        let updatedOrder : OrderRecord = {
+          id = order.id;
+          orderId = order.orderId;
+          name = order.name;
+          email = order.email;
+          whatsappNumber = order.whatsappNumber;
+          service = order.service;
+          projectDetails = order.projectDetails;
+          budget = order.budget;
+          deadline = order.deadline;
+          status = order.status;
+          paymentStatus = order.paymentStatus;
+          createdAt = order.createdAt;
+          screenshotBlobId = ?screenshotBlobId;
+        };
+        orders.add(id, updatedOrder);
+      };
+    };
   };
 
   // Problem Reports

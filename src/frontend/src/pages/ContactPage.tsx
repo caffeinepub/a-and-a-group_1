@@ -25,16 +25,19 @@ import {
   Upload,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useBlobStorage, validateFile } from "../hooks/useBlobStorage";
-import { useSubmitContact } from "../hooks/useQueries";
+import {
+  useGetPaymentSettings,
+  useSubmitContact,
+  useSubmitOrder,
+} from "../hooks/useQueries";
 import {
   type Order,
   addOrder,
   generateOrderId,
   getCurrentUser,
-  getPaymentSettings,
   isBlocked,
   updateOrderScreenshot,
 } from "../utils/localData";
@@ -82,8 +85,31 @@ const EMPTY_FORM: FormState = {
 
 // ─── Payment Section ─────────────────────────────────────────────────────────
 
+const DEFAULT_PAYMENT = {
+  upiId: "aloksi@ptyes",
+  accountHolderName: "Niraj Singh",
+  accountNumber: "7380869635",
+  ifscCode: "AIRP0000001",
+  qrCodeBlobId: "",
+};
+
 function PaymentSection({ orderId }: { orderId: string }) {
-  const settings = getPaymentSettings();
+  const { data: backendSettings } = useGetPaymentSettings();
+  const { getFileUrl } = useBlobStorage();
+  const [qrUrl, setQrUrl] = useState<string>("");
+  const settings = backendSettings ?? DEFAULT_PAYMENT;
+
+  // Load QR image URL from blob storage whenever blobId changes
+  useEffect(() => {
+    if (backendSettings?.qrCodeBlobId) {
+      getFileUrl(backendSettings.qrCodeBlobId)
+        .then(setQrUrl)
+        .catch(() => setQrUrl(""));
+    } else {
+      setQrUrl("");
+    }
+  }, [backendSettings?.qrCodeBlobId, getFileUrl]);
+
   const [upiCopied, setUpiCopied] = useState(false);
   const [bankCopied, setBankCopied] = useState(false);
 
@@ -167,10 +193,10 @@ function PaymentSection({ orderId }: { orderId: string }) {
             QR Code Payment
           </h4>
         </div>
-        {settings.qrImageUrl ? (
+        {qrUrl ? (
           <div className="flex justify-center">
             <img
-              src={settings.qrImageUrl}
+              src={qrUrl}
               alt="Payment QR Code"
               className="max-w-[220px] w-full rounded-xl border border-border"
             />
@@ -525,6 +551,7 @@ export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submittedOrder, setSubmittedOrder] = useState<Order | null>(null);
   const { mutateAsync: submitContact, isPending } = useSubmitContact();
+  const { mutateAsync: submitOrderBackend } = useSubmitOrder();
 
   // Service quick-message flow
   const [showSendMsg, setShowSendMsg] = useState(false);
@@ -582,16 +609,29 @@ export default function ContactPage() {
       createdAt: new Date().toISOString(),
     };
 
-    // Save to localStorage
+    // Save to localStorage (fallback)
     addOrder(order);
 
-    // Non-blocking backend submit
+    // Non-blocking backend submits (run in parallel)
     submitContact({
       name: form.name,
       email: form.email,
       projectDetails: form.projectDetails,
     }).catch(() => {
       // silent
+    });
+
+    submitOrderBackend({
+      orderId: order.orderId,
+      name: order.name,
+      email: order.email,
+      whatsappNumber: order.whatsappNumber,
+      service: order.service,
+      projectDetails: order.projectDetails,
+      budget: order.budget,
+      deadline: order.deadline,
+    }).catch(() => {
+      // silent — localStorage fallback already saved
     });
 
     setSubmittedOrder(order);

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   ContactSubmission,
+  OrderRecord,
   PaymentSettings,
   PortfolioItem,
   ProblemReport,
@@ -422,5 +423,111 @@ export function useIsAdmin() {
       return actor.isCallerAdmin();
     },
     enabled: !!actor && !isFetching,
+  });
+}
+
+// ─── Orders ────────────────────────────────────────────────────────────────
+
+export function useSubmitOrder() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      orderId: string;
+      name: string;
+      email: string;
+      whatsappNumber: string;
+      service: string;
+      projectDetails: string;
+      budget: string;
+      deadline: string;
+    }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.submitOrder(
+        data.orderId,
+        data.name,
+        data.email,
+        data.whatsappNumber,
+        data.service,
+        data.projectDetails,
+        data.budget,
+        data.deadline,
+      );
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
+  });
+}
+
+export function useGetOrderByOrderId(orderId: string) {
+  const { actor, isFetching } = useActor();
+  return useQuery<OrderRecord | null>({
+    queryKey: ["order", orderId],
+    queryFn: async () => {
+      if (!actor) return null;
+      return actor.getOrderByOrderId(orderId);
+    },
+    enabled: !!actor && !isFetching && orderId.trim().length > 0,
+  });
+}
+
+export function useGetOrdersByEmail(email: string) {
+  const { actor, isFetching } = useActor();
+  return useQuery<OrderRecord[]>({
+    queryKey: ["orders", "email", email],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getOrdersByEmail(email);
+    },
+    enabled: !!actor && !isFetching && email.trim().length > 0,
+  });
+}
+
+export function useListAllOrders() {
+  const { actor, isFetching } = useActor();
+  return useQuery<OrderRecord[]>({
+    queryKey: ["orders"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        return await actor.listAllOrders();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useUpdateOrderStatus() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { id: bigint; status: string }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.updateOrderStatus(data.id, data.status);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
+  });
+}
+
+export function useUpdateOrderPaymentStatus() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { id: bigint; paymentStatus: string }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.updateOrderPaymentStatus(data.id, data.paymentStatus);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
+  });
+}
+
+export function useUpdateOrderScreenshot() {
+  const { actor } = useActor();
+  return useMutation({
+    mutationFn: async (data: { id: bigint; screenshotBlobId: string }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.updateOrderScreenshot(data.id, data.screenshotBlobId);
+    },
   });
 }

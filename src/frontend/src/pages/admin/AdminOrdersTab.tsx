@@ -15,28 +15,57 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  ClipboardList,
-  Image,
-  Mail,
-  MessageCircle,
-  Trash2,
-} from "lucide-react";
+import { ClipboardList, Image, Mail, MessageCircle } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import type { OrderRecord } from "../../backend.d";
 import { useBlobStorage } from "../../hooks/useBlobStorage";
 import {
-  type Order,
-  type OrderStatus,
-  type PaymentStatus,
-  deleteOrder,
-  getOrders,
-  updateOrderPaymentStatus,
-  updateOrderStatus,
-} from "../../utils/localData";
+  useListAllOrders,
+  useUpdateOrderPaymentStatus,
+  useUpdateOrderStatus,
+} from "../../hooks/useQueries";
+import type { OrderStatus, PaymentStatus } from "../../utils/localData";
+
+// ─── Backend → display adapter ───────────────────────────────────────────────
+
+interface DisplayOrder {
+  id: bigint;
+  orderId: string;
+  name: string;
+  email: string;
+  whatsappNumber: string;
+  service: string;
+  projectDetails: string;
+  budget: string;
+  deadline: string;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  createdAt: string;
+  screenshotBlobId?: string;
+}
+
+function toDisplay(o: OrderRecord): DisplayOrder {
+  return {
+    id: o.id,
+    orderId: o.orderId,
+    name: o.name,
+    email: o.email,
+    whatsappNumber: o.whatsappNumber,
+    service: o.service,
+    projectDetails: o.projectDetails,
+    budget: o.budget,
+    deadline: o.deadline,
+    status: o.status as OrderStatus,
+    paymentStatus: (o.paymentStatus ?? "pending") as PaymentStatus,
+    createdAt: new Date(Number(o.createdAt) / 1_000_000).toISOString(),
+    screenshotBlobId: o.screenshotBlobId,
+  };
+}
 
 type FilterTab = "all" | OrderStatus;
+type OrderLike = DisplayOrder;
 
 // ─── Screenshot Modal ────────────────────────────────────────────────────────
 
@@ -140,55 +169,52 @@ const STATUS_CLASS: Record<OrderStatus, string> = {
   completed: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
 };
 
-function buildCompletionWhatsApp(order: Order): string {
+function buildCompletionWhatsApp(order: OrderLike): string {
   return `Hello ${order.name}, your order ${order.orderId} has been completed by A AND A GROUP! Please contact us if you have any questions.`;
 }
 
-function buildCompletionEmailUrl(order: Order): string {
+function buildCompletionEmailUrl(order: OrderLike): string {
   const subject = `Order Completed – ${order.orderId} – A AND A GROUP`;
   const body = `Hello ${order.name},\n\nWe are pleased to inform you that your order has been completed.\n\nOrder ID: ${order.orderId}\nService: ${order.service}\nBudget: ${order.budget}\nDeadline: ${order.deadline}\n\nThank you for choosing A AND A GROUP. Please contact us if you have any questions.\n\nBest regards,\nA AND A GROUP\nworkfora.agroup@zohomail.in`;
   return `mailto:${order.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 export default function AdminOrdersTab() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterTab>("all");
-  const [screenshotOrder, setScreenshotOrder] = useState<Order | null>(null);
+  const [screenshotOrder, setScreenshotOrder] = useState<OrderLike | null>(
+    null,
+  );
 
-  useEffect(() => {
-    // Simulate minimal load for skeleton effect
-    const timer = setTimeout(() => {
-      setOrders(getOrders());
-      setIsLoading(false);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, []);
+  const { data: rawOrders = [], isLoading } = useListAllOrders();
+  const { mutateAsync: updateStatus } = useUpdateOrderStatus();
+  const { mutateAsync: updatePaymentStatus } = useUpdateOrderPaymentStatus();
 
-  const refreshOrders = () => setOrders(getOrders());
+  const orders: DisplayOrder[] = rawOrders.map(toDisplay);
 
-  const handleStatusChange = (id: string, status: OrderStatus) => {
-    updateOrderStatus(id, status);
-    refreshOrders();
-    const order = getOrders().find((o) => o.id === id);
-    if (status === "completed" && order) {
-      toast.success(`Order ${order.orderId} marked as Completed!`);
-    } else {
-      toast.success("Order status updated.");
+  const handleStatusChange = async (order: OrderLike, status: OrderStatus) => {
+    try {
+      await updateStatus({ id: order.id, status });
+      if (status === "completed") {
+        toast.success(`Order ${order.orderId} marked as Completed!`);
+      } else {
+        toast.success("Order status updated.");
+      }
+    } catch {
+      toast.error("Failed to update status. Please try again.");
     }
   };
 
-  const handlePaymentStatusChange = (id: string, status: PaymentStatus) => {
-    updateOrderPaymentStatus(id, status);
-    refreshOrders();
-    toast.success("Payment status updated.");
-  };
-
-  const handleDelete = (order: Order) => {
-    deleteOrder(order.id);
-    refreshOrders();
-    toast.success(`Order ${order.orderId} deleted.`);
+  const handlePaymentStatusChange = async (
+    order: OrderLike,
+    status: PaymentStatus,
+  ) => {
+    try {
+      await updatePaymentStatus({ id: order.id, paymentStatus: status });
+      toast.success("Payment status updated.");
+    } catch {
+      toast.error("Failed to update payment status. Please try again.");
+    }
   };
 
   const filtered = orders.filter((o) => {
@@ -305,7 +331,7 @@ export default function AdminOrdersTab() {
         <div className="space-y-3">
           {sorted.map((order, i) => (
             <motion.div
-              key={order.id}
+              key={order.id.toString()}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.04 }}
@@ -318,8 +344,8 @@ export default function AdminOrdersTab() {
             >
               <div className="flex flex-col gap-4">
                 {/* Top Row */}
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-start gap-4 flex-wrap">
+                  <div className="flex items-center gap-3 flex-wrap flex-1">
                     {/* Order ID */}
                     <span className="font-mono font-bold text-sm text-primary bg-primary/10 border border-primary/20 px-3 py-1 rounded-lg tracking-wider">
                       {order.orderId}
@@ -338,17 +364,6 @@ export default function AdminOrdersTab() {
                       {PAYMENT_STATUS_LABELS[order.paymentStatus ?? "pending"]}
                     </Badge>
                   </div>
-                  {/* Delete */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(order)}
-                    data-ocid={`admin.orders.delete_button.${i + 1}`}
-                    className="h-7 w-7 p-0 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-all"
-                    aria-label="Delete order"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
                 </div>
 
                 {/* Info Grid */}
@@ -443,7 +458,7 @@ export default function AdminOrdersTab() {
                     <Select
                       value={order.status}
                       onValueChange={(v) =>
-                        handleStatusChange(order.id, v as OrderStatus)
+                        handleStatusChange(order, v as OrderStatus)
                       }
                     >
                       <SelectTrigger
@@ -478,7 +493,7 @@ export default function AdminOrdersTab() {
                     <Select
                       value={order.paymentStatus ?? "pending"}
                       onValueChange={(v) =>
-                        handlePaymentStatusChange(order.id, v as PaymentStatus)
+                        handlePaymentStatusChange(order, v as PaymentStatus)
                       }
                     >
                       <SelectTrigger

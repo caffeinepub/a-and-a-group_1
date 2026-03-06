@@ -20,7 +20,6 @@ import {
   AlertTriangle,
   Bot,
   CreditCard,
-  HelpCircle,
   Mail,
   MessageCircle,
   Send,
@@ -33,7 +32,6 @@ import { toast } from "sonner";
 import { useSubmitProblemReport } from "../hooks/useQueries";
 import type { AIChatLog, AIChatMessage } from "../utils/localData";
 import {
-  addReport,
   getChatLogs,
   getCurrentUser,
   getOrders,
@@ -689,31 +687,27 @@ function AIChatPanel({ onClose }: { onClose: () => void }) {
   };
 
   const handleTicketSubmit = async (data: TicketData) => {
-    const reportId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    addReport({
-      id: reportId,
-      name: data.name,
-      email: data.email,
-      orderId: data.orderId || undefined,
-      description: `[${data.issueType}] ${data.description}`,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-      isRead: false,
-    });
-
-    submitReport({
-      name: data.name,
-      email: data.email,
-      orderId: data.orderId || null,
-      description: `[${data.issueType}] ${data.description}`,
-    }).catch(() => {});
+    let ticketRef = `TKT-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+    try {
+      const backendId = await submitReport({
+        name: data.name,
+        email: data.email,
+        orderId: data.orderId || null,
+        description: `[${data.issueType}] ${data.description}`,
+      });
+      if (backendId !== undefined && backendId !== null) {
+        ticketRef = `TKT-${backendId.toString().padStart(6, "0")}`;
+      }
+    } catch {
+      // backend unavailable — still show confirmation
+    }
 
     const confirmMsg: ChatMessage = {
       id: `b-confirm-${Date.now()}`,
       role: "bot",
       text: detectHindi(data.description)
-        ? `✅ **Ticket Submit हो गई!**\n\nआपकी ticket हमारी team को मिल गई है। 24 घंटे में respond किया जाएगा।\n\nTicket Reference: **${reportId.slice(0, 8).toUpperCase()}**`
-        : `✅ **Ticket Submitted!**\n\nYour ticket has been received by our team. We'll respond within 24 hours.\n\nTicket Reference: **${reportId.slice(0, 8).toUpperCase()}**`,
+        ? `✅ **Ticket Submit हो गई!**\n\nआपकी ticket हमारी team को मिल गई है। 24 घंटे में respond किया जाएगा।\n\nTicket Reference: **${ticketRef}**`
+        : `✅ **Ticket Submitted!**\n\nYour ticket has been received by our team. We'll respond within 24 hours.\n\nTicket Reference: **${ticketRef}**`,
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, confirmMsg]);
@@ -1007,7 +1001,7 @@ export default function FloatingWidgets() {
 
   return (
     <>
-      {/* Single bottom-right cluster: "?" above AI chat button */}
+      {/* Single bottom-right AI chat button */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
         {/* AI Chat Panel */}
         <AnimatePresence>
@@ -1020,25 +1014,6 @@ export default function FloatingWidgets() {
             >
               <AIChatPanel onClose={() => setChatOpen(false)} />
             </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Quick Support "?" button — sits above main button */}
-        <AnimatePresence>
-          {!chatOpen && (
-            <motion.button
-              key="help-btn"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              data-ocid="support.quick.button"
-              onClick={() => setChatOpen(true)}
-              className="w-10 h-10 rounded-full bg-accent/90 text-accent-foreground border border-accent/50 flex items-center justify-center shadow-neon-purple hover:scale-110 transition-transform"
-              aria-label="Support"
-              title="Support"
-            >
-              <HelpCircle className="w-5 h-5" />
-            </motion.button>
           )}
         </AnimatePresence>
 

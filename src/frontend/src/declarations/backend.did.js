@@ -34,6 +34,21 @@ export const PortfolioItem = IDL.Record({
   'serviceId' : IDL.Opt(IDL.Nat),
 });
 export const UserProfile = IDL.Record({ 'name' : IDL.Text });
+export const OrderRecord = IDL.Record({
+  'id' : IDL.Nat,
+  'service' : IDL.Text,
+  'status' : IDL.Text,
+  'paymentStatus' : IDL.Text,
+  'screenshotBlobId' : IDL.Opt(IDL.Text),
+  'name' : IDL.Text,
+  'createdAt' : IDL.Int,
+  'deadline' : IDL.Text,
+  'email' : IDL.Text,
+  'orderId' : IDL.Text,
+  'whatsappNumber' : IDL.Text,
+  'budget' : IDL.Text,
+  'projectDetails' : IDL.Text,
+});
 export const PaymentSettings = IDL.Record({
   'ifscCode' : IDL.Text,
   'accountHolderName' : IDL.Text,
@@ -133,6 +148,8 @@ export const idlService = IDL.Service({
     ),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getOrderByOrderId' : IDL.Func([IDL.Text], [IDL.Opt(OrderRecord)], ['query']),
+  'getOrdersByEmail' : IDL.Func([IDL.Text], [IDL.Vec(OrderRecord)], ['query']),
   'getPaymentSettings' : IDL.Func([], [IDL.Opt(PaymentSettings)], ['query']),
   'getService' : IDL.Func([IDL.Nat], [Service], ['query']),
   'getUserProfile' : IDL.Func(
@@ -141,6 +158,7 @@ export const idlService = IDL.Service({
       ['query'],
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'listAllOrders' : IDL.Func([], [IDL.Vec(OrderRecord)], ['query']),
   'listPortfolioItems' : IDL.Func([], [IDL.Vec(PortfolioItem)], ['query']),
   'listProblemReports' : IDL.Func([], [IDL.Vec(ProblemReport)], ['query']),
   'listReviews' : IDL.Func([], [IDL.Vec(Review)], ['query']),
@@ -149,12 +167,29 @@ export const idlService = IDL.Service({
   'markAsRead' : IDL.Func([IDL.Nat], [], []),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
   'submitContact' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [IDL.Nat], []),
+  'submitOrder' : IDL.Func(
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+      ],
+      [IDL.Nat],
+      [],
+    ),
   'submitProblemReport' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Opt(IDL.Text), IDL.Text],
       [IDL.Nat],
       [],
     ),
   'toggleServiceAvailability' : IDL.Func([IDL.Nat], [], []),
+  'updateOrderPaymentStatus' : IDL.Func([IDL.Nat, IDL.Text], [], []),
+  'updateOrderScreenshot' : IDL.Func([IDL.Nat, IDL.Text], [], []),
+  'updateOrderStatus' : IDL.Func([IDL.Nat, IDL.Text], [], []),
   'updatePaymentSettings' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
       [],
@@ -222,6 +257,21 @@ export const idlFactory = ({ IDL }) => {
     'serviceId' : IDL.Opt(IDL.Nat),
   });
   const UserProfile = IDL.Record({ 'name' : IDL.Text });
+  const OrderRecord = IDL.Record({
+    'id' : IDL.Nat,
+    'service' : IDL.Text,
+    'status' : IDL.Text,
+    'paymentStatus' : IDL.Text,
+    'screenshotBlobId' : IDL.Opt(IDL.Text),
+    'name' : IDL.Text,
+    'createdAt' : IDL.Int,
+    'deadline' : IDL.Text,
+    'email' : IDL.Text,
+    'orderId' : IDL.Text,
+    'whatsappNumber' : IDL.Text,
+    'budget' : IDL.Text,
+    'projectDetails' : IDL.Text,
+  });
   const PaymentSettings = IDL.Record({
     'ifscCode' : IDL.Text,
     'accountHolderName' : IDL.Text,
@@ -321,6 +371,16 @@ export const idlFactory = ({ IDL }) => {
       ),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getOrderByOrderId' : IDL.Func(
+        [IDL.Text],
+        [IDL.Opt(OrderRecord)],
+        ['query'],
+      ),
+    'getOrdersByEmail' : IDL.Func(
+        [IDL.Text],
+        [IDL.Vec(OrderRecord)],
+        ['query'],
+      ),
     'getPaymentSettings' : IDL.Func([], [IDL.Opt(PaymentSettings)], ['query']),
     'getService' : IDL.Func([IDL.Nat], [Service], ['query']),
     'getUserProfile' : IDL.Func(
@@ -329,6 +389,7 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'listAllOrders' : IDL.Func([], [IDL.Vec(OrderRecord)], ['query']),
     'listPortfolioItems' : IDL.Func([], [IDL.Vec(PortfolioItem)], ['query']),
     'listProblemReports' : IDL.Func([], [IDL.Vec(ProblemReport)], ['query']),
     'listReviews' : IDL.Func([], [IDL.Vec(Review)], ['query']),
@@ -337,12 +398,29 @@ export const idlFactory = ({ IDL }) => {
     'markAsRead' : IDL.Func([IDL.Nat], [], []),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
     'submitContact' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [IDL.Nat], []),
+    'submitOrder' : IDL.Func(
+        [
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+        ],
+        [IDL.Nat],
+        [],
+      ),
     'submitProblemReport' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Opt(IDL.Text), IDL.Text],
         [IDL.Nat],
         [],
       ),
     'toggleServiceAvailability' : IDL.Func([IDL.Nat], [], []),
+    'updateOrderPaymentStatus' : IDL.Func([IDL.Nat, IDL.Text], [], []),
+    'updateOrderScreenshot' : IDL.Func([IDL.Nat, IDL.Text], [], []),
+    'updateOrderStatus' : IDL.Func([IDL.Nat, IDL.Text], [], []),
     'updatePaymentSettings' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
         [],

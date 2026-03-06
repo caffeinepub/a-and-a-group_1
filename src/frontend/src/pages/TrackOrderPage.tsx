@@ -22,8 +22,35 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
+import type { OrderRecord } from "../backend.d";
+import { useActor } from "../hooks/useActor";
 import { useBlobStorage } from "../hooks/useBlobStorage";
-import { type Order, type OrderStatus, getOrders } from "../utils/localData";
+import {
+  type Order,
+  type OrderStatus,
+  type PaymentStatus,
+  getOrders,
+} from "../utils/localData";
+
+// ─── Backend → Local converter ──────────────────────────────────────────────
+
+function backendOrderToLocal(o: OrderRecord): Order {
+  return {
+    id: o.id.toString(),
+    orderId: o.orderId,
+    name: o.name,
+    email: o.email,
+    whatsappNumber: o.whatsappNumber,
+    service: o.service,
+    projectDetails: o.projectDetails,
+    budget: o.budget,
+    deadline: o.deadline,
+    status: o.status as OrderStatus,
+    paymentStatus: (o.paymentStatus ?? "pending") as PaymentStatus,
+    createdAt: new Date(Number(o.createdAt) / 1_000_000).toISOString(),
+    screenshotBlobId: o.screenshotBlobId,
+  };
+}
 
 // ─── Step config ────────────────────────────────────────────────────────────
 
@@ -502,6 +529,7 @@ export default function TrackOrderPage() {
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<SearchResult>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const { actor } = useActor();
 
   // Reset on mode change
   const handleModeChange = (mode: SearchMode) => {
@@ -510,32 +538,66 @@ export default function TrackOrderPage() {
     setResult(null);
   };
 
-  const handleSearch = useCallback(() => {
+  const handleSearch = useCallback(async () => {
     if (!query.trim()) return;
     setIsSearching(true);
 
-    setTimeout(() => {
-      const orders = getOrders();
+    try {
+      const trimmed = query.trim();
 
       if (searchMode === "orderId") {
+        // Try backend first
+        if (actor) {
+          try {
+            const backendOrder = await actor.getOrderByOrderId(trimmed);
+            if (backendOrder) {
+              setResult(backendOrderToLocal(backendOrder));
+              return;
+            }
+          } catch {
+            // fall through to localStorage
+          }
+        }
+        // Fallback to localStorage
+        const orders = getOrders();
         const found = orders.find(
-          (o) => o.orderId.toLowerCase() === query.trim().toLowerCase(),
+          (o) => o.orderId.toLowerCase() === trimmed.toLowerCase(),
         );
         setResult(found ?? "not_found");
       } else {
-        // Email search — sort newest first
+        // Email search — try backend first
+        if (actor) {
+          try {
+            const backendOrders = await actor.getOrdersByEmail(trimmed);
+            if (backendOrders && backendOrders.length > 0) {
+              const converted = backendOrders
+                .map(backendOrderToLocal)
+                .sort(
+                  (a, b) =>
+                    new Date(b.createdAt).getTime() -
+                    new Date(a.createdAt).getTime(),
+                );
+              setResult(converted);
+              return;
+            }
+          } catch {
+            // fall through to localStorage
+          }
+        }
+        // Fallback to localStorage
+        const orders = getOrders();
         const found = orders
-          .filter((o) => o.email.toLowerCase() === query.trim().toLowerCase())
+          .filter((o) => o.email.toLowerCase() === trimmed.toLowerCase())
           .sort(
             (a, b) =>
               new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
           );
         setResult(found.length > 0 ? found : "not_found");
       }
-
+    } finally {
       setIsSearching(false);
-    }, 400);
-  }, [query, searchMode]);
+    }
+  }, [query, searchMode, actor]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") handleSearch();

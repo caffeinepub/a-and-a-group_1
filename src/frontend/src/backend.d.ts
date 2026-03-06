@@ -23,12 +23,19 @@ export interface ProblemReport {
     orderId?: string;
     timestamp: bigint;
 }
-export interface ContactSubmission {
+export interface OrderRecord {
     id: bigint;
+    service: string;
+    status: string;
+    paymentStatus: string;
+    screenshotBlobId?: string;
     name: string;
     createdAt: bigint;
-    isRead: boolean;
+    deadline: string;
     email: string;
+    orderId: string;
+    whatsappNumber: string;
+    budget: string;
     projectDetails: string;
 }
 export interface PortfolioItem {
@@ -48,6 +55,14 @@ export interface Service {
     description: string;
     category: string;
     rating: bigint;
+}
+export interface ContactSubmission {
+    id: bigint;
+    name: string;
+    createdAt: bigint;
+    isRead: boolean;
+    email: string;
+    projectDetails: string;
 }
 export interface UserProfile {
     name: string;
@@ -79,10 +94,13 @@ export interface backendInterface {
     filterPortfolioByCategory(category: string): Promise<Array<PortfolioItem>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
+    getOrderByOrderId(orderId: string): Promise<OrderRecord | null>;
+    getOrdersByEmail(email: string): Promise<Array<OrderRecord>>;
     getPaymentSettings(): Promise<PaymentSettings | null>;
     getService(id: bigint): Promise<Service>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
+    listAllOrders(): Promise<Array<OrderRecord>>;
     listPortfolioItems(): Promise<Array<PortfolioItem>>;
     listProblemReports(): Promise<Array<ProblemReport>>;
     listReviews(): Promise<Array<Review>>;
@@ -91,8 +109,12 @@ export interface backendInterface {
     markAsRead(id: bigint): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     submitContact(name: string, email: string, projectDetails: string): Promise<bigint>;
+    submitOrder(orderId: string, name: string, email: string, whatsappNumber: string, service: string, projectDetails: string, budget: string, deadline: string): Promise<bigint>;
     submitProblemReport(name: string, email: string, orderId: string | null, description: string): Promise<bigint>;
     toggleServiceAvailability(id: bigint): Promise<void>;
+    updateOrderPaymentStatus(id: bigint, paymentStatus: string): Promise<void>;
+    updateOrderScreenshot(id: bigint, screenshotBlobId: string): Promise<void>;
+    updateOrderStatus(id: bigint, status: string): Promise<void>;
     updatePaymentSettings(upiId: string, accountHolderName: string, accountNumber: string, ifscCode: string, qrCodeBlobId: string): Promise<void>;
     updatePortfolio(id: bigint, title: string, category: string, description: string, blobId: string, mediaType: string, serviceId: bigint | null): Promise<void>;
     updateProblemReportStatus(id: bigint, status: string): Promise<void>;

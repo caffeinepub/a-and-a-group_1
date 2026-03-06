@@ -18,6 +18,21 @@ export interface ContactSubmission {
   'email' : string,
   'projectDetails' : string,
 }
+export interface OrderRecord {
+  'id' : bigint,
+  'service' : string,
+  'status' : string,
+  'paymentStatus' : string,
+  'screenshotBlobId' : [] | [string],
+  'name' : string,
+  'createdAt' : bigint,
+  'deadline' : string,
+  'email' : string,
+  'orderId' : string,
+  'whatsappNumber' : string,
+  'budget' : string,
+  'projectDetails' : string,
+}
 export interface PaymentSettings {
   'ifscCode' : string,
   'accountHolderName' : string,
@@ -114,10 +129,13 @@ export interface _SERVICE {
   'filterPortfolioByCategory' : ActorMethod<[string], Array<PortfolioItem>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getOrderByOrderId' : ActorMethod<[string], [] | [OrderRecord]>,
+  'getOrdersByEmail' : ActorMethod<[string], Array<OrderRecord>>,
   'getPaymentSettings' : ActorMethod<[], [] | [PaymentSettings]>,
   'getService' : ActorMethod<[bigint], Service>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
+  'listAllOrders' : ActorMethod<[], Array<OrderRecord>>,
   'listPortfolioItems' : ActorMethod<[], Array<PortfolioItem>>,
   'listProblemReports' : ActorMethod<[], Array<ProblemReport>>,
   'listReviews' : ActorMethod<[], Array<Review>>,
@@ -126,11 +144,18 @@ export interface _SERVICE {
   'markAsRead' : ActorMethod<[bigint], undefined>,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'submitContact' : ActorMethod<[string, string, string], bigint>,
+  'submitOrder' : ActorMethod<
+    [string, string, string, string, string, string, string, string],
+    bigint
+  >,
   'submitProblemReport' : ActorMethod<
     [string, string, [] | [string], string],
     bigint
   >,
   'toggleServiceAvailability' : ActorMethod<[bigint], undefined>,
+  'updateOrderPaymentStatus' : ActorMethod<[bigint, string], undefined>,
+  'updateOrderScreenshot' : ActorMethod<[bigint, string], undefined>,
+  'updateOrderStatus' : ActorMethod<[bigint, string], undefined>,
   'updatePaymentSettings' : ActorMethod<
     [string, string, string, string, string],
     undefined

@@ -1,47 +1,42 @@
 # A AND A GROUP
 
 ## Current State
-- Two separate floating icons: AI chat (bottom-left, Bot icon) and Support widget (bottom-right, HelpCircle icon)
-- AI chat uses basic keyword matching (English only), no typing animation, no ticket generation
-- Support widget opens a panel with WhatsApp, Email, Payment Issue, Report a Problem options
-- Report a Problem opens a Dialog form; saved to localStorage + backend
-- No AI conversation logging, no admin AI logs tab
-- User orders stored in localStorage; no per-user data scoping in the AI
-- Admin identified by user code `1649963` stored in localStorage
+The website has a complete Motoko backend with APIs for orders, problem reports, payment settings, and user profiles. However, the frontend saves most data to localStorage instead of the backend. This means each phone/browser has its own isolated data — users, orders, problem reports, and payment QR code are all local-only.
+
+Specific localStorage-only flows:
+- User registration (name + user code) saved to localStorage only
+- Problem reports saved to localStorage; backend call is made but result is ignored for display
+- Payment settings (especially QR code as base64 data URL) saved to localStorage only
+- Admin dashboard user count reads from localStorage `aag_users` array
+- Admin reported issues tab merges localStorage + backend but primary source is localStorage
+
+The backend already supports:
+- `submitProblemReport` / `listProblemReports` — full CRUD
+- `getPaymentSettings` / `updatePaymentSettings` — stores upiId, accountHolderName, accountNumber, ifscCode, qrCodeBlobId
+- `submitOrder` / `listAllOrders` / `getOrderByOrderId` — full order management
+- `saveCallerUserProfile` / `getCallerUserProfile` — user profile storage
 
 ## Requested Changes (Diff)
 
 ### Add
-- Merge both floating icons into a single advanced AI chat system (bottom-right)
-- A small "?" support quick-access button sitting just above the AI chat button (stacked vertically, no overlap)
-- Typing animation (~1 second delay) before bot response appears, with animated dots
-- Multilingual AI: detect language of user input (Hindi/English/other), respond in same language
-- Step-by-step guidance flows: placing orders, payment, uploading screenshots, tracking orders
-- Per-user data scoping: AI can look up orders by the current user's code; shows only their orders
-- Admin (user code 1649963) sees all orders when querying through AI
-- Auto ticket generation: if AI cannot resolve, show "Create Ticket" button in chat; ticket form inside chat panel (Name, Email, Order ID optional, Issue Type, Description); submits to backend via `submitProblemReport`; saves to localStorage
-- AI conversation logs stored in localStorage (per session, keyed by user code + timestamp)
-- Admin AI Logs tab in Admin Portal showing all conversation logs with user code, messages, timestamp
-- Central shared localStorage namespace (already in place via localStorage keys)
+- QR code blob upload in AdminPaymentSettingsTab: upload QR image to blob storage, store blob ID in backend `updatePaymentSettings`, retrieve it via `getPaymentSettings` on the payment page
+- `useGetPaymentSettings` hook usage on ContactPage so QR is fetched from backend
 
 ### Modify
-- FloatingWidgets.tsx: remove separate left/right positioning, merge into single bottom-right cluster
-- `getBotResponse` upgraded to multilingual, step-by-step, order-aware response engine
-- Support options (WhatsApp, Email, Payment Issue) moved inside the AI chat panel as quick-action buttons when user asks for "support" or "help"
-- Greeting message updated to be bilingual-aware
+- **AdminReportedIssuesTab**: Make backend the primary source of truth. Remove localStorage-first logic. Load reports from `useListProblemReports()`, update status via `useUpdateProblemReportStatus()`, delete via `useDeleteProblemReport()`. Keep localStorage only as a local read cache for unread badge.
+- **FloatingWidgets (ticket submit)**: Remove `addReport()` localStorage call. Only call `submitReport` backend API. Show ticket reference from the returned backend ID.
+- **AdminPaymentSettingsTab**: Change QR upload to use blob storage. On save, call `updatePaymentSettings` with the real `qrCodeBlobId`. Remove localStorage `setPaymentSettings` for QR. Keep localStorage only for non-QR text fields as optimistic cache.
+- **ContactPage payment section**: Load QR from backend `getPaymentSettings()` and construct blob URL using blob storage URL pattern, not from localStorage.
+- **Admin dashboard user count**: The backend does not have a `listAllUsers` endpoint. Keep user count from localStorage but show a note. Focus fixes on problem reports and payment QR which are most impactful.
+- **AdminReportedIssuesTab unread badge**: Count unread from backend reports not yet seen in this session (use sessionStorage to track which IDs have been seen).
 
 ### Remove
-- Standalone left-side AI chat button
-- Standalone right-side support toggle button (replaced by stacked "?" above AI button)
+- localStorage as primary store for problem reports in AdminReportedIssuesTab
+- localStorage QR image URL as source of truth for payment page
 
 ## Implementation Plan
-1. Add `AIChatLog` interface and CRUD functions to `localData.ts`
-2. Rewrite `FloatingWidgets.tsx`:
-   - Single bottom-right cluster: stacked "?" button above main AI chat button
-   - Merged AI panel with support quick-actions tab and full chat
-   - `getBotResponse` with language detection (Hindi keywords), order lookup by user code, step-by-step flows
-   - Typing animation (1s delay, animated dots)
-   - Auto ticket creation flow inside chat when AI cannot help
-   - Log all conversations to localStorage
-3. Add `AdminAILogsTab.tsx` in admin pages
-4. Wire Admin AI Logs tab into `AdminPage.tsx` sidebar
+1. Fix `AdminReportedIssuesTab` to use backend as primary source (useListProblemReports, useUpdateProblemReportStatus, useDeleteProblemReport) — remove getReports/updateReportStatus/deleteReport/markReportRead localStorage calls
+2. Fix `FloatingWidgets` ticket submit to remove addReport localStorage call, use backend ID as ticket reference
+3. Fix `AdminPaymentSettingsTab` QR upload: use useBlobStorage upload hook to get a blobId, then save it to backend via updatePaymentSettings
+4. Fix `ContactPage` to load payment settings including QR from backend via useGetPaymentSettings hook
+5. Fix unread report badge to track seen IDs in sessionStorage based on backend report IDs

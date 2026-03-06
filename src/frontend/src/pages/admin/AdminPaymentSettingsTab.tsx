@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Building2,
+  CheckCircle2,
   Copy,
   CreditCard,
   Loader2,
@@ -12,61 +13,125 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useUpdatePaymentSettings } from "../../hooks/useQueries";
+import { useBlobStorage } from "../../hooks/useBlobStorage";
 import {
-  type LocalPaymentSettings,
-  getPaymentSettings,
-  setPaymentSettings,
-} from "../../utils/localData";
+  useGetPaymentSettings,
+  useUpdatePaymentSettings,
+} from "../../hooks/useQueries";
+
+interface PaymentFormState {
+  upiId: string;
+  accountHolderName: string;
+  accountNumber: string;
+  ifscCode: string;
+  qrCodeBlobId: string;
+  qrPreviewUrl: string; // local preview only
+}
+
+const DEFAULTS: PaymentFormState = {
+  upiId: "aloksi@ptyes",
+  accountHolderName: "Niraj Singh",
+  accountNumber: "7380869635",
+  ifscCode: "AIRP0000001",
+  qrCodeBlobId: "",
+  qrPreviewUrl: "",
+};
 
 export default function AdminPaymentSettingsTab() {
-  const [settings, setSettings] =
-    useState<LocalPaymentSettings>(getPaymentSettings);
+  const [form, setForm] = useState<PaymentFormState>(DEFAULTS);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingQr, setIsUploadingQr] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: backendSettings, isLoading: settingsLoading } =
+    useGetPaymentSettings();
   const { mutateAsync: updatePaymentSettings } = useUpdatePaymentSettings();
+  const { uploadFile, getFileUrl } = useBlobStorage();
 
+  // Load existing backend settings on mount
   useEffect(() => {
-    setSettings(getPaymentSettings());
-  }, []);
+    if (!backendSettings) return;
+    const loadSettings = async () => {
+      let qrPreviewUrl = "";
+      if (backendSettings.qrCodeBlobId) {
+        try {
+          qrPreviewUrl = await getFileUrl(backendSettings.qrCodeBlobId);
+        } catch {
+          qrPreviewUrl = "";
+        }
+      }
+      setForm({
+        upiId: backendSettings.upiId || DEFAULTS.upiId,
+        accountHolderName:
+          backendSettings.accountHolderName || DEFAULTS.accountHolderName,
+        accountNumber: backendSettings.accountNumber || DEFAULTS.accountNumber,
+        ifscCode: backendSettings.ifscCode || DEFAULTS.ifscCode,
+        qrCodeBlobId: backendSettings.qrCodeBlobId || "",
+        qrPreviewUrl,
+      });
+    };
+    loadSettings();
+  }, [backendSettings, getFileUrl]);
 
-  const handleQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Show local preview immediately
     const reader = new FileReader();
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result as string;
-      setSettings((prev) => ({ ...prev, qrImageUrl: dataUrl }));
-      toast.success("QR code image loaded. Click Save to apply.");
+      setForm((prev) => ({ ...prev, qrPreviewUrl: dataUrl }));
     };
     reader.readAsDataURL(file);
+
+    // Upload to blob storage
+    setIsUploadingQr(true);
+    try {
+      const blobId = await uploadFile(file, {
+        onRetry: (attempt) => {
+          toast.loading(`Upload failed. Retrying... (${attempt}/3)`, {
+            id: "qr-upload",
+          });
+        },
+      });
+      setForm((prev) => ({ ...prev, qrCodeBlobId: blobId }));
+      toast.success("QR code uploaded! Click Save to apply.", {
+        id: "qr-upload",
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Upload failed.";
+      toast.error(msg, { id: "qr-upload" });
+    } finally {
+      setIsUploadingQr(false);
+    }
   };
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Save to localStorage
-      setPaymentSettings(settings);
-
-      // Non-blocking backend update
-      updatePaymentSettings({
-        upiId: settings.upiId,
-        accountHolderName: settings.accountHolderName,
-        accountNumber: settings.accountNumber,
-        ifscCode: settings.ifscCode,
-        qrCodeBlobId: "", // QR stored as data URL in local only
-      }).catch(() => {
-        // silent – localStorage is source of truth for QR
+      await updatePaymentSettings({
+        upiId: form.upiId,
+        accountHolderName: form.accountHolderName,
+        accountNumber: form.accountNumber,
+        ifscCode: form.ifscCode,
+        qrCodeBlobId: form.qrCodeBlobId,
       });
-
       toast.success("Payment settings saved successfully!");
     } catch {
-      toast.error("Failed to save settings.");
+      toast.error("Failed to save settings. Please try again.");
     } finally {
       setIsSaving(false);
     }
   };
+
+  if (settingsLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -99,9 +164,9 @@ export default function AdminPaymentSettingsTab() {
               </Label>
               <Input
                 data-ocid="admin.payment.upi.input"
-                value={settings.upiId}
+                value={form.upiId}
                 onChange={(e) =>
-                  setSettings((p) => ({ ...p, upiId: e.target.value }))
+                  setForm((p) => ({ ...p, upiId: e.target.value }))
                 }
                 placeholder="yourname@upi"
                 className="bg-secondary border-border text-foreground placeholder:text-muted-foreground/50 focus:border-primary/50 font-mono"
@@ -126,9 +191,9 @@ export default function AdminPaymentSettingsTab() {
                 </Label>
                 <Input
                   data-ocid="admin.payment.bank_name.input"
-                  value={settings.accountHolderName}
+                  value={form.accountHolderName}
                   onChange={(e) =>
-                    setSettings((p) => ({
+                    setForm((p) => ({
                       ...p,
                       accountHolderName: e.target.value,
                     }))
@@ -143,12 +208,9 @@ export default function AdminPaymentSettingsTab() {
                 </Label>
                 <Input
                   data-ocid="admin.payment.account.input"
-                  value={settings.accountNumber}
+                  value={form.accountNumber}
                   onChange={(e) =>
-                    setSettings((p) => ({
-                      ...p,
-                      accountNumber: e.target.value,
-                    }))
+                    setForm((p) => ({ ...p, accountNumber: e.target.value }))
                   }
                   placeholder="Account number"
                   className="bg-secondary border-border text-foreground placeholder:text-muted-foreground/50 focus:border-primary/50 font-mono"
@@ -160,9 +222,9 @@ export default function AdminPaymentSettingsTab() {
                 </Label>
                 <Input
                   data-ocid="admin.payment.ifsc.input"
-                  value={settings.ifscCode}
+                  value={form.ifscCode}
                   onChange={(e) =>
-                    setSettings((p) => ({ ...p, ifscCode: e.target.value }))
+                    setForm((p) => ({ ...p, ifscCode: e.target.value }))
                   }
                   placeholder="IFSC Code"
                   className="bg-secondary border-border text-foreground placeholder:text-muted-foreground/50 focus:border-primary/50 font-mono uppercase"
@@ -183,20 +245,26 @@ export default function AdminPaymentSettingsTab() {
             </div>
             <p className="text-xs text-muted-foreground font-body">
               Upload a QR code image for UPI payment. Clients will see this on
-              the payment page.
+              the payment page. The QR is stored on the central server and
+              visible to all users.
             </p>
 
             {/* Current QR Preview */}
-            {settings.qrImageUrl ? (
+            {form.qrPreviewUrl ? (
               <div className="flex flex-col items-center gap-3 p-4 rounded-xl bg-secondary/30 border border-border">
                 <img
-                  src={settings.qrImageUrl}
+                  src={form.qrPreviewUrl}
                   alt="Current QR Code"
                   className="max-w-[180px] w-full rounded-xl border border-border"
                 />
-                <span className="text-xs text-emerald-400 font-body">
-                  QR code is set
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-xs text-emerald-400 font-body">
+                    {form.qrCodeBlobId
+                      ? "QR uploaded to central server"
+                      : "QR preview loaded"}
+                  </span>
+                </div>
               </div>
             ) : (
               <div className="flex items-center justify-center py-8 rounded-xl border border-dashed border-border bg-secondary/30">
@@ -212,7 +280,7 @@ export default function AdminPaymentSettingsTab() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               onChange={handleQrUpload}
               className="hidden"
             />
@@ -220,18 +288,28 @@ export default function AdminPaymentSettingsTab() {
               type="button"
               variant="outline"
               onClick={() => fileInputRef.current?.click()}
+              disabled={isUploadingQr}
               data-ocid="admin.payment.qr.upload_button"
               className="w-full border-primary/30 text-primary hover:bg-primary/10"
             >
-              <Upload className="w-4 h-4 mr-2" />
-              {settings.qrImageUrl ? "Change QR Code" : "Upload QR Code"}
+              {isUploadingQr ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Uploading to server...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4 mr-2" />
+                  {form.qrPreviewUrl ? "Change QR Code" : "Upload QR Code"}
+                </>
+              )}
             </Button>
           </div>
 
           {/* Save Button */}
           <Button
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || isUploadingQr}
             data-ocid="admin.payment.save.primary_button"
             className="w-full py-6 font-display font-bold text-base bg-primary text-primary-foreground hover:shadow-neon-blue transition-all duration-300 disabled:opacity-50"
           >
@@ -264,7 +342,7 @@ export default function AdminPaymentSettingsTab() {
                 </p>
                 <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-secondary/50 border border-border">
                   <span className="font-mono font-semibold text-sm text-foreground">
-                    {settings.upiId || "—"}
+                    {form.upiId || "—"}
                   </span>
                   <button
                     type="button"
@@ -272,7 +350,7 @@ export default function AdminPaymentSettingsTab() {
                     aria-label="Copy UPI"
                     onClick={() =>
                       navigator.clipboard
-                        .writeText(settings.upiId)
+                        .writeText(form.upiId)
                         .then(() => toast.success("UPI ID copied!"))
                         .catch(() => {})
                     }
@@ -290,9 +368,9 @@ export default function AdminPaymentSettingsTab() {
                 </p>
                 <div className="space-y-1.5">
                   {[
-                    { label: "Name", value: settings.accountHolderName },
-                    { label: "Account", value: settings.accountNumber },
-                    { label: "IFSC", value: settings.ifscCode },
+                    { label: "Name", value: form.accountHolderName },
+                    { label: "Account", value: form.accountNumber },
+                    { label: "IFSC", value: form.ifscCode },
                   ].map((item) => (
                     <div
                       key={item.label}
@@ -310,14 +388,14 @@ export default function AdminPaymentSettingsTab() {
               </div>
 
               {/* QR Preview */}
-              {settings.qrImageUrl && (
+              {form.qrPreviewUrl && (
                 <div className="rounded-xl border border-border bg-card p-4 text-center">
                   <p className="text-xs font-body text-muted-foreground uppercase tracking-wide mb-3 flex items-center justify-center gap-1.5">
                     <QrCode className="w-3 h-3" />
                     QR Code
                   </p>
                   <img
-                    src={settings.qrImageUrl}
+                    src={form.qrPreviewUrl}
                     alt="Payment QR"
                     className="max-w-[120px] w-full mx-auto rounded-lg border border-border"
                   />

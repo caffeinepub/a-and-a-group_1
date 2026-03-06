@@ -55,6 +55,7 @@ import { toast } from "sonner";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   useListPortfolio,
+  useListProblemReports,
   useListReviews,
   useListServices,
   useListSubmissions,
@@ -65,9 +66,9 @@ import {
   type SiteUser,
   addOfficer,
   blockUser,
+  getCurrentUser,
   getOfficers,
   getOrders,
-  getUnreadReportCount,
   getUser,
   getUsers,
   isOfficer,
@@ -77,6 +78,7 @@ import {
   unblockUser,
   updateOfficer,
 } from "../utils/localData";
+import AdminAIChatLogsTab from "./admin/AdminAIChatLogsTab";
 import AdminMediaManagerTab from "./admin/AdminMediaManagerTab";
 import AdminOrdersTab from "./admin/AdminOrdersTab";
 import AdminPaymentSettingsTab from "./admin/AdminPaymentSettingsTab";
@@ -101,9 +103,11 @@ type Section =
   | "spam"
   | "settings"
   | "reported_issues"
-  | "payment_settings";
+  | "payment_settings"
+  | "ai_logs";
 
 const ADMIN_PIN = "1207";
+const MASTER_ADMIN_CODE = "1649963";
 
 const DEFAULT_PERMISSIONS: OfficerPermissions = {
   manageServices: false,
@@ -378,6 +382,12 @@ const NAV_ITEMS: NavItem[] = [
     group: "System",
   },
   {
+    id: "ai_logs",
+    label: "AI Chat Logs",
+    icon: <MessageSquare className="w-4 h-4" />,
+    group: "Support",
+  },
+  {
     id: "settings",
     label: "Settings",
     icon: <Settings className="w-4 h-4" />,
@@ -484,13 +494,15 @@ function DashboardSection() {
   const [users, setUsers] = useState<SiteUser[]>([]);
   const [officers, setOfficers] = useState<Officer[]>([]);
   const [orderCount, setOrderCount] = useState(0);
-  const [pendingReports, setPendingReports] = useState(0);
+  const { data: allDashboardReports = [] } = useListProblemReports();
+  const pendingReports = allDashboardReports.filter(
+    (r) => r.status === "pending",
+  ).length;
 
   useEffect(() => {
     setUsers(getUsers());
     setOfficers(getOfficers());
     setOrderCount(getOrders().length);
-    setPendingReports(getUnreadReportCount());
   }, []);
 
   const unreadCount = submissions?.filter((s) => !s.isRead).length ?? 0;
@@ -1469,15 +1481,39 @@ export default function AdminPage() {
   const [pinVerified, setPinVerifiedState] = useState(isPinVerified);
   const [activeSection, setActiveSection] = useState<Section>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [unreadReports, setUnreadReports] = useState(() =>
-    getUnreadReportCount(),
-  );
+  const [seenReportIds, setSeenReportIds] = useState<Set<string>>(() => {
+    try {
+      const raw = sessionStorage.getItem("aag_seen_report_ids");
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
 
-  // Recompute badge counts when section changes (after visiting reported_issues tab it will clear)
+  const { data: allBackendReports = [] } = useListProblemReports();
+
+  // Unread = backend reports not yet seen in this session
+  const unreadReports = allBackendReports.filter(
+    (r) => !seenReportIds.has(r.id.toString()) && r.status === "pending",
+  ).length;
+
+  // Recompute badge counts when section changes
   const handleNavigate = (s: Section) => {
     setActiveSection(s);
-    // Refresh report count when user navigates away from issues
-    setUnreadReports(getUnreadReportCount());
+  };
+
+  const handleReportsRead = () => {
+    try {
+      const ids = allBackendReports.map((r) => r.id.toString());
+      const updated = new Set([...seenReportIds, ...ids]);
+      setSeenReportIds(updated);
+      sessionStorage.setItem(
+        "aag_seen_report_ids",
+        JSON.stringify([...updated]),
+      );
+    } catch {
+      /* ignore */
+    }
   };
 
   const unreadSubmissions = submissions?.filter((s) => !s.isRead).length ?? 0;
@@ -1582,15 +1618,67 @@ export default function AdminPage() {
     );
   }
 
+  // ── Access Guard — user code check ───────────────────────────────────────
+  const currentUser = getCurrentUser();
+  const currentUserCode = currentUser?.code ?? "";
+  const isMasterAdmin = currentUserCode === MASTER_ADMIN_CODE;
+  const isOfficerUser = isOfficer(currentUserCode);
+
+  if (!isMasterAdmin && !isOfficerUser) {
+    return (
+      <main className="pt-24 pb-24 min-h-screen flex items-center justify-center">
+        <div className="container mx-auto px-4 max-w-md">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            data-ocid="admin.access_denied.panel"
+            className="rounded-2xl border border-destructive/30 bg-card p-10 text-center"
+          >
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-destructive/10 border border-destructive/30 mx-auto mb-6">
+              <ShieldAlert className="w-7 h-7 text-destructive" />
+            </div>
+            <h1 className="font-display font-bold text-2xl text-foreground mb-2">
+              Access Denied
+            </h1>
+            <p className="text-muted-foreground font-body text-sm mb-2">
+              Your user code{" "}
+              <span className="font-mono text-foreground">
+                {currentUserCode || "unknown"}
+              </span>{" "}
+              does not have Admin or Officer access.
+            </p>
+            <p className="text-xs text-muted-foreground/60 font-body mb-8">
+              Only the permanent Admin (code: 1649963) and assigned Officers can
+              access the Admin Portal.
+            </p>
+            <Button
+              onClick={handleLogout}
+              data-ocid="admin.access_denied.logout.button"
+              variant="outline"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:border-destructive/50"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
+          </motion.div>
+        </div>
+      </main>
+    );
+  }
+
   // ── Full Dashboard ────────────────────────────────────────────────────────
   const renderSection = () => {
     switch (activeSection) {
       case "dashboard":
         return <DashboardSection />;
       case "users":
-        return <UserManagementSection />;
+        return isMasterAdmin ? <UserManagementSection /> : <DashboardSection />;
       case "officers":
-        return <OfficerManagementSection />;
+        return isMasterAdmin ? (
+          <OfficerManagementSection />
+        ) : (
+          <DashboardSection />
+        );
       case "services":
         return <AdminServicesTab />;
       case "portfolio":
@@ -1604,15 +1692,13 @@ export default function AdminPage() {
       case "orders":
         return <AdminOrdersTab />;
       case "spam":
-        return <SpamSection />;
+        return isMasterAdmin ? <SpamSection /> : <DashboardSection />;
       case "reported_issues":
-        return (
-          <AdminReportedIssuesTab
-            onReportsRead={() => setUnreadReports(getUnreadReportCount())}
-          />
-        );
+        return <AdminReportedIssuesTab onReportsRead={handleReportsRead} />;
       case "payment_settings":
         return <AdminPaymentSettingsTab />;
+      case "ai_logs":
+        return isMasterAdmin ? <AdminAIChatLogsTab /> : <DashboardSection />;
       case "settings":
         return <SettingsSection onLogout={handleLogout} />;
       default:
