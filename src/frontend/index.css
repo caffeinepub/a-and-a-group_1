@@ -1,0 +1,251 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Font Faces ──────────────────────────────────────────── */
+
+@font-face {
+  font-family: "Cabinet Grotesk";
+  src: url("/assets/fonts/CabinetGrotesk-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Sora";
+  src: url("/assets/fonts/Sora-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-display: swap;
+}
+
+/* ─── Design Tokens ───────────────────────────────────────── */
+
+@layer base {
+  :root {
+    --radius: 0.75rem;
+
+    /* Dark-first palette — electric night */
+    --background: 0.1 0.01 265;
+    --foreground: 0.96 0.005 265;
+
+    --card: 0.14 0.015 265;
+    --card-foreground: 0.96 0.005 265;
+
+    --popover: 0.16 0.015 265;
+    --popover-foreground: 0.96 0.005 265;
+
+    /* Electric blue primary */
+    --primary: 0.75 0.18 210;
+    --primary-foreground: 0.08 0.01 265;
+
+    --secondary: 0.18 0.02 265;
+    --secondary-foreground: 0.9 0.005 265;
+
+    --muted: 0.2 0.015 265;
+    --muted-foreground: 0.6 0.01 265;
+
+    /* Neon purple accent */
+    --accent: 0.62 0.22 295;
+    --accent-foreground: 0.98 0 0;
+
+    --destructive: 0.65 0.24 27;
+    --destructive-foreground: 0.98 0 0;
+
+    --border: 0.25 0.02 265;
+    --input: 0.22 0.02 265;
+    --ring: 0.75 0.18 210;
+
+    --chart-1: 0.75 0.18 210;
+    --chart-2: 0.62 0.22 295;
+    --chart-3: 0.7 0.18 160;
+    --chart-4: 0.7 0.2 50;
+    --chart-5: 0.65 0.24 27;
+
+    --sidebar: 0.12 0.012 265;
+    --sidebar-foreground: 0.96 0.005 265;
+    --sidebar-primary: 0.75 0.18 210;
+    --sidebar-primary-foreground: 0.08 0.01 265;
+    --sidebar-accent: 0.18 0.02 265;
+    --sidebar-accent-foreground: 0.9 0.005 265;
+    --sidebar-border: 0.25 0.02 265;
+    --sidebar-ring: 0.75 0.18 210;
+
+    /* Custom neon tokens */
+    --neon-blue: 0.78 0.2 208;
+    --neon-blue-dim: 0.6 0.15 208;
+    --neon-purple: 0.65 0.25 295;
+    --neon-purple-dim: 0.5 0.18 295;
+    --surface-1: 0.12 0.012 265;
+    --surface-2: 0.16 0.018 265;
+    --surface-3: 0.2 0.022 265;
+    --glow-blue: 0 0 30px oklch(0.78 0.2 208 / 0.5);
+    --glow-purple: 0 0 30px oklch(0.65 0.25 295 / 0.5);
+  }
+
+  /* Force dark mode always */
+  html {
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, oklch(0.3 0.08 265 / 0.3) 0%, transparent 100%),
+      radial-gradient(ellipse 60% 40% at 80% 80%, oklch(0.3 0.06 295 / 0.15) 0%, transparent 100%);
+    background-attachment: fixed;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* ─── Utility Classes ────────────────────────────────────── */
+
+@layer utilities {
+  /* Neon glow effects */
+  .glow-blue {
+    box-shadow: 0 0 20px oklch(0.78 0.2 208 / 0.4), 0 0 60px oklch(0.78 0.2 208 / 0.2);
+  }
+  .glow-blue-sm {
+    box-shadow: 0 0 10px oklch(0.78 0.2 208 / 0.3), 0 0 30px oklch(0.78 0.2 208 / 0.15);
+  }
+  .glow-purple {
+    box-shadow: 0 0 20px oklch(0.65 0.25 295 / 0.4), 0 0 60px oklch(0.65 0.25 295 / 0.2);
+  }
+  .glow-purple-sm {
+    box-shadow: 0 0 10px oklch(0.65 0.25 295 / 0.3), 0 0 30px oklch(0.65 0.25 295 / 0.15);
+  }
+
+  /* Text glow */
+  .text-glow-blue {
+    text-shadow: 0 0 20px oklch(0.78 0.2 208 / 0.7), 0 0 60px oklch(0.78 0.2 208 / 0.4);
+  }
+  .text-glow-purple {
+    text-shadow: 0 0 20px oklch(0.65 0.25 295 / 0.7), 0 0 60px oklch(0.65 0.25 295 / 0.4);
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    background: linear-gradient(135deg, oklch(0.78 0.2 208) 0%, oklch(0.65 0.25 295) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Neon border */
+  .neon-border-blue {
+    border: 1px solid oklch(0.78 0.2 208 / 0.5);
+    box-shadow: inset 0 0 10px oklch(0.78 0.2 208 / 0.05), 0 0 10px oklch(0.78 0.2 208 / 0.1);
+  }
+  .neon-border-purple {
+    border: 1px solid oklch(0.65 0.25 295 / 0.5);
+    box-shadow: inset 0 0 10px oklch(0.65 0.25 295 / 0.05), 0 0 10px oklch(0.65 0.25 295 / 0.1);
+  }
+
+  /* Glass effect */
+  .glass {
+    background: oklch(0.14 0.015 265 / 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .glass-light {
+    background: oklch(0.18 0.02 265 / 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  /* Animated gradient border */
+  .gradient-border {
+    position: relative;
+    background-clip: padding-box;
+  }
+  .gradient-border::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, oklch(0.78 0.2 208) 0%, oklch(0.65 0.25 295) 100%);
+    z-index: -1;
+    opacity: 0.4;
+  }
+
+  /* Fade in animation */
+  .animate-fade-in {
+    animation: fadeIn 0.6s ease-out forwards;
+  }
+  .animate-slide-up {
+    animation: slideUp 0.6s ease-out forwards;
+  }
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  .animate-pulse-glow {
+    animation: pulseGlow 2s ease-in-out infinite;
+  }
+}
+
+/* ─── Keyframes ──────────────────────────────────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 15px oklch(0.78 0.2 208 / 0.3); }
+  50% { box-shadow: 0 0 35px oklch(0.78 0.2 208 / 0.6), 0 0 70px oklch(0.78 0.2 208 / 0.3); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes orbit {
+  from { transform: rotate(0deg) translateX(60px) rotate(0deg); }
+  to { transform: rotate(360deg) translateX(60px) rotate(-360deg); }
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: oklch(0.1 0.01 265);
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.3 0.04 265);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.78 0.2 208 / 0.6);
+}
+
+/* ─── Accordion ──────────────────────────────────────────── */
+
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
