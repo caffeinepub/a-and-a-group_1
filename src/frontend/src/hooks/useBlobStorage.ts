@@ -3,7 +3,6 @@ import { useCallback, useState } from "react";
 import { loadConfig } from "../config";
 import { StorageClient } from "../utils/StorageClient";
 import { addUploadError } from "../utils/localData";
-import { useActor } from "./useActor";
 import { useInternetIdentity } from "./useInternetIdentity";
 
 // ─── Constants ─────────────────────────────────────────────────────────────
@@ -87,7 +86,6 @@ export function validateFile(file: File): { valid: boolean; reason?: string } {
 // ─── Hook ──────────────────────────────────────────────────────────────────
 
 export function useBlobStorage() {
-  const { actor } = useActor();
   const { identity } = useInternetIdentity();
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -98,9 +96,8 @@ export function useBlobStorage() {
       file: File,
       options?: { onRetry?: (attempt: number) => void },
     ): Promise<string> => {
-      if (!actor) throw new Error("Actor not available");
-
       // Validate file before attempting upload
+      // Note: actor is NOT needed here — StorageClient uses its own HttpAgent
       const validation = validateFile(file);
       if (!validation.valid) {
         throw new Error(
@@ -166,7 +163,7 @@ export function useBlobStorage() {
 
       throw lastError;
     },
-    [actor, identity],
+    [identity],
   );
 
   const getFileUrl = useCallback(async (hash: string): Promise<string> => {

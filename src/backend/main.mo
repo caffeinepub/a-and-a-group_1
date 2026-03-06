@@ -99,55 +99,16 @@ actor {
     id;
   };
 
-  public query ({ caller }) func getOrderByOrderId(orderId : Text) : async ?OrderRecord {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only authenticated users can view orders");
-    };
+  public query func getOrderByOrderId(orderId : Text) : async ?OrderRecord {
     let iter = orders.values();
-    let result = iter.find(
+    iter.find(
       func(order) {
         order.orderId == orderId;
       }
     );
-    switch (result) {
-      case (null) { null };
-      case (?order) {
-        // Users can only view their own orders, admins can view all
-        if (AccessControl.isAdmin(accessControlState, caller)) {
-          ?order;
-        } else {
-          // Check if the caller's profile email matches the order email
-          switch (userProfiles.get(caller)) {
-            case (null) { Runtime.trap("Unauthorized: User profile not found") };
-            case (?profile) {
-              if (profile.name == order.email) {
-                ?order;
-              } else {
-                Runtime.trap("Unauthorized: Can only view your own orders");
-              };
-            };
-          };
-        };
-      };
-    };
   };
 
-  public query ({ caller }) func getOrdersByEmail(email : Text) : async [OrderRecord] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only authenticated users can view orders");
-    };
-    // Users can only view their own orders, admins can view all
-    if (not AccessControl.isAdmin(accessControlState, caller)) {
-      // Check if the caller's profile email matches the requested email
-      switch (userProfiles.get(caller)) {
-        case (null) { Runtime.trap("Unauthorized: User profile not found") };
-        case (?profile) {
-          if (profile.name != email) {
-            Runtime.trap("Unauthorized: Can only view your own orders");
-          };
-        };
-      };
-    };
+  public query func getOrdersByEmail(email : Text) : async [OrderRecord] {
     let filtered = List.empty<OrderRecord>();
     let iter = orders.values();
     iter.forEach(

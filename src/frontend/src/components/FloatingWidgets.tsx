@@ -29,9 +29,10 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useActor } from "../hooks/useActor";
 import { useSubmitProblemReport } from "../hooks/useQueries";
 import type { AIChatLog, AIChatMessage } from "../utils/localData";
-import { getChatLogs, getCurrentUser, saveChatLog } from "../utils/localData";
+import { getCurrentUser, saveChatLog } from "../utils/localData";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -519,6 +520,7 @@ function AIChatPanel({ onClose }: { onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<"chat" | "support">("chat");
   const scrollRef = useRef<HTMLDivElement>(null);
   const { mutateAsync: submitReport } = useSubmitProblemReport();
+  const { actor: actorForTicket, isFetching: actorFetching } = useActor();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on message change
   useEffect(() => {
@@ -643,8 +645,13 @@ function AIChatPanel({ onClose }: { onClose: () => void }) {
   const handleTicketSubmit = async (data: TicketData) => {
     let backendId: bigint | null = null;
 
-    // Try up to 2 times to save to backend
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // If actor is still fetching, wait a moment for it to initialize
+    if (!actorForTicket && actorFetching) {
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    // Try up to 3 times to save to backend
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const result = await submitReport({
           name: data.name,
@@ -656,17 +663,26 @@ function AIChatPanel({ onClose }: { onClose: () => void }) {
           backendId = result;
           break; // success — stop retrying
         }
-      } catch {
-        if (attempt === 0) {
-          // Wait 1 second before retry
-          await new Promise((r) => setTimeout(r, 1000));
+        // If result is 0n (falsy bigint), treat as success with default ref
+        if (result === 0n || result === BigInt(0)) {
+          backendId = BigInt(0);
+          break;
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[Ticket] Attempt ${attempt + 1} failed:`, errMsg);
+        if (attempt < 2) {
+          // Wait before retry
+          await new Promise((r) => setTimeout(r, 1500));
         }
       }
     }
 
-    // If backend failed after 2 retries, show error and stop
+    // If backend failed after 3 retries, show error and stop
     if (backendId === null) {
-      toast.error("Failed to submit ticket. Please try again.");
+      toast.error(
+        "Failed to submit ticket. Please check your connection and try again.",
+      );
       return;
     }
 

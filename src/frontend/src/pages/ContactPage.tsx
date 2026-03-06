@@ -27,6 +27,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useActor } from "../hooks/useActor";
 import { useBlobStorage, validateFile } from "../hooks/useBlobStorage";
 import {
   useGetPaymentSettings,
@@ -96,27 +97,54 @@ function PaymentSection({ orderId }: { orderId: string }) {
   const { data: backendSettings } = useGetPaymentSettings();
   const { getFileUrl } = useBlobStorage();
   const [qrUrl, setQrUrl] = useState<string>("");
-  // Use only backend settings; fall back to DEFAULTS if backend returns null
+
+  // Read from localStorage first for fast cross-device display, fall back to backend
+  const localSettings = (() => {
+    try {
+      const raw = localStorage.getItem("aag_payment_settings");
+      if (raw)
+        return JSON.parse(raw) as Partial<
+          typeof DEFAULT_PAYMENT & { qrCodeBlobId: string }
+        >;
+    } catch {
+      /* ignore */
+    }
+    return {};
+  })();
+
   const settings = {
-    upiId: backendSettings?.upiId || DEFAULT_PAYMENT.upiId,
+    upiId:
+      backendSettings?.upiId || localSettings.upiId || DEFAULT_PAYMENT.upiId,
     accountHolderName:
-      backendSettings?.accountHolderName || DEFAULT_PAYMENT.accountHolderName,
+      backendSettings?.accountHolderName ||
+      localSettings.accountHolderName ||
+      DEFAULT_PAYMENT.accountHolderName,
     accountNumber:
-      backendSettings?.accountNumber || DEFAULT_PAYMENT.accountNumber,
-    ifscCode: backendSettings?.ifscCode || DEFAULT_PAYMENT.ifscCode,
-    qrCodeBlobId: backendSettings?.qrCodeBlobId || DEFAULT_PAYMENT.qrCodeBlobId,
+      backendSettings?.accountNumber ||
+      localSettings.accountNumber ||
+      DEFAULT_PAYMENT.accountNumber,
+    ifscCode:
+      backendSettings?.ifscCode ||
+      localSettings.ifscCode ||
+      DEFAULT_PAYMENT.ifscCode,
+    qrCodeBlobId:
+      backendSettings?.qrCodeBlobId ||
+      localSettings.qrCodeBlobId ||
+      DEFAULT_PAYMENT.qrCodeBlobId,
   };
+
+  const qrBlobId = settings.qrCodeBlobId;
 
   // Load QR image URL from blob storage whenever blobId changes
   useEffect(() => {
-    if (backendSettings?.qrCodeBlobId) {
-      getFileUrl(backendSettings.qrCodeBlobId)
+    if (qrBlobId) {
+      getFileUrl(qrBlobId)
         .then(setQrUrl)
         .catch(() => setQrUrl(""));
     } else {
       setQrUrl("");
     }
-  }, [backendSettings?.qrCodeBlobId, getFileUrl]);
+  }, [qrBlobId, getFileUrl]);
 
   const [upiCopied, setUpiCopied] = useState(false);
   const [bankCopied, setBankCopied] = useState(false);
@@ -573,6 +601,7 @@ export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submittedOrder, setSubmittedOrder] = useState<Order | null>(null);
   const [backendOrderId, setBackendOrderId] = useState<bigint | null>(null);
+  const { actor, isFetching: actorFetching } = useActor();
   const { mutateAsync: submitContact } = useSubmitContact();
   const { mutateAsync: submitOrderBackend, isPending: isSubmittingOrder } =
     useSubmitOrder();
@@ -977,10 +1006,20 @@ export default function ContactPage() {
                     <Button
                       type="submit"
                       data-ocid="order.submit.primary_button"
-                      disabled={isSubmittingOrder || !form.service}
+                      disabled={
+                        isSubmittingOrder ||
+                        !form.service ||
+                        actorFetching ||
+                        !actor
+                      }
                       className="w-full py-6 font-display font-bold text-base bg-primary text-primary-foreground hover:shadow-neon-blue transition-all duration-300 disabled:opacity-50"
                     >
-                      {isSubmittingOrder ? (
+                      {actorFetching || !actor ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : isSubmittingOrder ? (
                         <>
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           Processing...

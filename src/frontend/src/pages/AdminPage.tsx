@@ -52,6 +52,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { ContactSubmission } from "../backend.d";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   useListAllOrders,
@@ -87,6 +88,39 @@ import AdminReportedIssuesTab from "./admin/AdminReportedIssuesTab";
 import AdminReviewsTab from "./admin/AdminReviewsTab";
 import AdminServicesTab from "./admin/AdminServicesTab";
 import AdminSubmissionsTab from "./admin/AdminSubmissionsTab";
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * Parse user registrations stored in backend contact submissions.
+ * When a user registers, a contact submission is saved with:
+ *   email = "user_reg_XXXXXXX@aag.internal"
+ *   projectDetails = "USER_REGISTRATION|code:1234567|name:John|registeredAt:..."
+ */
+function parseBackendUsers(submissions: ContactSubmission[]): SiteUser[] {
+  return submissions
+    .filter((s) => /^user_reg_.*@aag\.internal$/.test(s.email))
+    .map((s) => {
+      const parts: Record<string, string> = {};
+      for (const part of s.projectDetails.split("|")) {
+        const idx = part.indexOf(":");
+        if (idx !== -1) {
+          const key = part.slice(0, idx);
+          const val = part.slice(idx + 1);
+          parts[key] = val;
+        }
+      }
+      return {
+        userCode: parts.code || "",
+        name: parts.name || s.name,
+        registeredAt:
+          parts.registeredAt ||
+          new Date(Number(s.createdAt) / 1_000_000).toISOString(),
+        isBlocked: false,
+      } as SiteUser;
+    })
+    .filter((u) => u.userCode.length === 7);
+}
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -724,9 +758,22 @@ function DashboardSection() {
 // ─── User Management Section ───────────────────────────────────────────────
 
 function UserManagementSection() {
-  const [users, setUsers] = useState<SiteUser[]>(() => getUsers());
+  const [localUsers, setLocalUsers] = useState<SiteUser[]>(() => getUsers());
+  const { data: submissions } = useListSubmissions();
   const [search, setSearch] = useState("");
   const [confirmBlock, setConfirmBlock] = useState<SiteUser | null>(null);
+
+  // Merge local users with backend-registered users (deduplicate by userCode)
+  const users: SiteUser[] = (() => {
+    const merged = [...localUsers];
+    const backendUsers = submissions ? parseBackendUsers(submissions) : [];
+    for (const bu of backendUsers) {
+      if (!merged.find((u) => u.userCode === bu.userCode)) {
+        merged.push(bu);
+      }
+    }
+    return merged;
+  })();
 
   const filtered = users.filter(
     (u) =>
@@ -738,7 +785,7 @@ function UserManagementSection() {
     if (user.isBlocked) {
       unblockUser(user.userCode);
       toast.success(`${user.name} has been unblocked.`);
-      setUsers(getUsers());
+      setLocalUsers(getUsers());
     } else {
       setConfirmBlock(user);
     }
@@ -748,7 +795,7 @@ function UserManagementSection() {
     if (!confirmBlock) return;
     blockUser(confirmBlock.userCode);
     toast.success(`${confirmBlock.name} has been blocked.`);
-    setUsers(getUsers());
+    setLocalUsers(getUsers());
     setConfirmBlock(null);
   };
 
@@ -932,6 +979,7 @@ function OfficerManagementSection() {
   const [editPerms, setEditPerms] =
     useState<OfficerPermissions>(DEFAULT_PERMISSIONS);
   const [demoteTarget, setDemoteTarget] = useState<Officer | null>(null);
+  const { data: submissions } = useListSubmissions();
 
   const handleCodeChange = (val: string) => {
     setPromoteCode(val);
@@ -942,6 +990,16 @@ function OfficerManagementSection() {
         setCodePreview(found);
         setCodeError("");
       } else {
+        // Also search backend-registered users (users from other devices)
+        if (submissions) {
+          const backendUsers = parseBackendUsers(submissions);
+          const backendFound = backendUsers.find((u) => u.userCode === val);
+          if (backendFound) {
+            setCodePreview(backendFound);
+            setCodeError("");
+            return;
+          }
+        }
         setCodePreview(null);
         setCodeError("No user found with this code.");
       }

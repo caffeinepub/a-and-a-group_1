@@ -21,7 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrderRecord } from "../backend.d";
 import { useActor } from "../hooks/useActor";
 import { useBlobStorage } from "../hooks/useBlobStorage";
@@ -517,7 +517,10 @@ function EmailResults({ orders }: { orders: Order[] }) {
 // ─── Main Page ─────────────────────────────────────────────────────────────
 
 type SearchMode = "orderId" | "email";
-type SearchResult = Order | Order[] | "not_found" | null;
+type SearchResult = Order | Order[] | "not_found" | "connecting" | null;
+
+const MAX_ACTOR_RETRIES = 3;
+const ACTOR_RETRY_DELAY_MS = 1500;
 
 export default function TrackOrderPage() {
   const [searchMode, setSearchMode] = useState<SearchMode>("orderId");
@@ -525,6 +528,12 @@ export default function TrackOrderPage() {
   const [result, setResult] = useState<SearchResult>(null);
   const [isSearching, setIsSearching] = useState(false);
   const { actor } = useActor();
+
+  // Keep a ref to actor so retry callbacks always see latest value
+  const actorRef = useRef(actor);
+  useEffect(() => {
+    actorRef.current = actor;
+  }, [actor]);
 
   // Reset on mode change
   const handleModeChange = (mode: SearchMode) => {
@@ -540,34 +549,43 @@ export default function TrackOrderPage() {
     try {
       const trimmed = query.trim();
 
+      // If actor isn't ready yet, retry up to MAX_ACTOR_RETRIES times
+      let currentActor = actorRef.current;
+      if (!currentActor) {
+        setResult("connecting");
+        for (let attempt = 0; attempt < MAX_ACTOR_RETRIES; attempt++) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, ACTOR_RETRY_DELAY_MS),
+          );
+          currentActor = actorRef.current;
+          if (currentActor) break;
+        }
+      }
+
+      if (!currentActor) {
+        setResult("not_found");
+        return;
+      }
+
       if (searchMode === "orderId") {
-        // Backend is the only source of truth
-        if (actor) {
-          const backendOrder = await actor.getOrderByOrderId(trimmed);
-          if (backendOrder) {
-            setResult(backendOrderToLocal(backendOrder));
-          } else {
-            setResult("not_found");
-          }
+        const backendOrder = await currentActor.getOrderByOrderId(trimmed);
+        if (backendOrder) {
+          setResult(backendOrderToLocal(backendOrder));
         } else {
           setResult("not_found");
         }
       } else {
         // Email search — backend only
-        if (actor) {
-          const backendOrders = await actor.getOrdersByEmail(trimmed);
-          if (backendOrders && backendOrders.length > 0) {
-            const converted = backendOrders
-              .map(backendOrderToLocal)
-              .sort(
-                (a, b) =>
-                  new Date(b.createdAt).getTime() -
-                  new Date(a.createdAt).getTime(),
-              );
-            setResult(converted);
-          } else {
-            setResult("not_found");
-          }
+        const backendOrders = await currentActor.getOrdersByEmail(trimmed);
+        if (backendOrders && backendOrders.length > 0) {
+          const converted = backendOrders
+            .map(backendOrderToLocal)
+            .sort(
+              (a, b) =>
+                new Date(b.createdAt).getTime() -
+                new Date(a.createdAt).getTime(),
+            );
+          setResult(converted);
         } else {
           setResult("not_found");
         }
@@ -575,7 +593,7 @@ export default function TrackOrderPage() {
     } finally {
       setIsSearching(false);
     }
-  }, [query, searchMode, actor]);
+  }, [query, searchMode]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") handleSearch();
@@ -724,6 +742,23 @@ export default function TrackOrderPage() {
 
         {/* Result */}
         <AnimatePresence mode="wait">
+          {result === "connecting" && (
+            <motion.div
+              key="connecting"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="rounded-2xl border border-primary/20 bg-primary/5 p-8 text-center"
+            >
+              <span className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin inline-block mb-4" />
+              <p className="font-display font-semibold text-foreground mb-1">
+                Connecting to server...
+              </p>
+              <p className="text-xs text-muted-foreground font-body">
+                Please wait while we connect to the central database.
+              </p>
+            </motion.div>
+          )}
           {result === "not_found" && (
             <motion.div
               key="not-found"
@@ -734,16 +769,19 @@ export default function TrackOrderPage() {
               <NotFoundCard />
             </motion.div>
           )}
-          {result && result !== "not_found" && !Array.isArray(result) && (
-            <motion.div
-              key={result.orderId}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <OrderResultCard order={result} />
-            </motion.div>
-          )}
+          {result &&
+            result !== "not_found" &&
+            result !== "connecting" &&
+            !Array.isArray(result) && (
+              <motion.div
+                key={result.orderId}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <OrderResultCard order={result} />
+              </motion.div>
+            )}
           {result && Array.isArray(result) && (
             <motion.div
               key="email-results"
