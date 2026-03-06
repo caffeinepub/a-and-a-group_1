@@ -8,8 +8,13 @@ const navLinks = [
   { label: "Services", path: "/services", ocid: "nav.services.link" },
   { label: "Portfolio", path: "/portfolio", ocid: "nav.portfolio.link" },
   { label: "Reviews", path: "/reviews", ocid: "nav.reviews.link" },
+  { label: "My Orders", path: "/track-order", ocid: "nav.track_order.link" },
   { label: "Contact", path: "/contact", ocid: "nav.contact.link" },
 ];
+
+function dispatchOpenSupport() {
+  window.dispatchEvent(new CustomEvent("aag-open-support"));
+}
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -104,6 +109,14 @@ export default function Navbar() {
 
           {/* Desktop CTA + Admin */}
           <div className="hidden md:flex items-center gap-3">
+            <button
+              type="button"
+              data-ocid="nav.support.link"
+              onClick={dispatchOpenSupport}
+              className="text-xs font-body text-muted-foreground hover:text-accent-foreground px-3 py-1.5 rounded border border-border hover:border-accent/40 hover:bg-accent/10 transition-all duration-200"
+            >
+              Support
+            </button>
             <Link
               to="/admin"
               data-ocid="nav.admin.link"
@@ -160,6 +173,14 @@ export default function Navbar() {
                 );
               })}
               <div className="pt-2 flex flex-col gap-2">
+                <button
+                  type="button"
+                  data-ocid="nav.support.link"
+                  onClick={dispatchOpenSupport}
+                  className="px-4 py-3 text-sm font-body text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-all text-left"
+                >
+                  Support
+                </button>
                 <Link
                   to="/admin"
                   data-ocid="nav.admin.link"

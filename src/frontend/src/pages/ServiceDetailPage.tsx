@@ -25,7 +25,7 @@ export default function ServiceDetailPage() {
         icon: backendService.icon,
         description: backendService.description,
         category: backendService.category,
-        rating: backendService.rating,
+        rating: Number(backendService.rating),
         isAvailable: backendService.isAvailable,
         longDescription: backendService.description,
       }

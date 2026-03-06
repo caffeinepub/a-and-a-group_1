@@ -1,79 +1,47 @@
-# A AND A GROUP — Admin Portal & Team Management System
+# A AND A GROUP
 
 ## Current State
-
-The app has:
-- A public website (Home, Services, Portfolio, Reviews, Contact pages)
-- An existing `/admin` route protected by Internet Identity login
-- Admin tabs: Services, Portfolio, Reviews, Submissions
-- Backend with services, portfolio, reviews, contact submissions, and blob storage
-- Authorization via `AccessControl` with `#admin` / `#user` / `#guest` roles
-- No user identification system (no name/code for visitors)
-- No officer/sub-admin system
-- No PIN-based security layer
-- No spam/block list
-- No officer permission management
+- Two separate floating icons: AI chat (bottom-left, Bot icon) and Support widget (bottom-right, HelpCircle icon)
+- AI chat uses basic keyword matching (English only), no typing animation, no ticket generation
+- Support widget opens a panel with WhatsApp, Email, Payment Issue, Report a Problem options
+- Report a Problem opens a Dialog form; saved to localStorage + backend
+- No AI conversation logging, no admin AI logs tab
+- User orders stored in localStorage; no per-user data scoping in the AI
+- Admin identified by user code `1649963` stored in localStorage
 
 ## Requested Changes (Diff)
 
 ### Add
-
-**Backend:**
-- `SiteUser` type: `{ userCode: Text; name: Text; createdAt: Int; isBlocked: Bool }`
-- `Officer` type: `{ userCode: Text; name: Text; permissions: OfficerPermissions; promotedAt: Int }`
-- `OfficerPermissions` type: `{ manageServices: Bool; enableDisableServices: Bool; uploadPortfolio: Bool; addReviews: Bool; respondToInquiries: Bool; manageSubmissions: Bool }`
-- `registerUser(name: Text): async Text` — generates a unique 7-digit code, stores user, returns code
-- `getUser(userCode: Text): async ?SiteUser` — lookup user by code
-- `listUsers(): async [SiteUser]` — admin only
-- `promoteToOfficer(userCode: Text, permissions: OfficerPermissions): async ()` — master admin only
-- `demoteOfficer(userCode: Text): async ()` — master admin only
-- `updateOfficerPermissions(userCode: Text, permissions: OfficerPermissions): async ()` — master admin only
-- `listOfficers(): async [Officer]` — admin only
-- `blockUser(userCode: Text): async ()` — admin only, blocks user from submitting contact forms
-- `unblockUser(userCode: Text): async ()` — admin only
-- `isUserBlocked(userCode: Text): async Bool` — public query
-- Update `submitContact` to check if caller's user code is blocked
-- Add `userCode: ?Text` field to `ContactSubmission` to track which user submitted
-
-**Frontend (new):**
-- `UserIdentityModal` — shown on first visit, asks for name, shows generated 7-digit user code, stores in localStorage
-- Admin Portal PIN lock screen — shown before admin dashboard, requires PIN `1207`
-- `AdminDashboard` section with analytics cards (total users, officers, services, submissions)
-- `AdminUsersTab` — lists all registered users, shows user code, block/unblock action
-- `AdminOfficersTab` — promote user by entering 7-digit code, set permissions per officer, demote officer
-- `AdminSpamTab` — blocked users list, unblock action
-- Admin sidebar navigation (Dashboard, User Mgmt, Officer Mgmt, Services, Portfolio, Reviews, Spam/Block, Settings)
-- Settings tab showing master admin info
+- Merge both floating icons into a single advanced AI chat system (bottom-right)
+- A small "?" support quick-access button sitting just above the AI chat button (stacked vertically, no overlap)
+- Typing animation (~1 second delay) before bot response appears, with animated dots
+- Multilingual AI: detect language of user input (Hindi/English/other), respond in same language
+- Step-by-step guidance flows: placing orders, payment, uploading screenshots, tracking orders
+- Per-user data scoping: AI can look up orders by the current user's code; shows only their orders
+- Admin (user code 1649963) sees all orders when querying through AI
+- Auto ticket generation: if AI cannot resolve, show "Create Ticket" button in chat; ticket form inside chat panel (Name, Email, Order ID optional, Issue Type, Description); submits to backend via `submitProblemReport`; saves to localStorage
+- AI conversation logs stored in localStorage (per session, keyed by user code + timestamp)
+- Admin AI Logs tab in Admin Portal showing all conversation logs with user code, messages, timestamp
+- Central shared localStorage namespace (already in place via localStorage keys)
 
 ### Modify
-
-- `AdminPage.tsx` — replace tab-based layout with full sidebar dashboard; add PIN lock layer before showing dashboard content; add new sections
-- `submitContact` backend — check `isUserBlocked` before allowing submission
-- `ContactPage.tsx` — read `userCode` from localStorage and pass it with form submission
-- `HomePage.tsx` / root layout — trigger `UserIdentityModal` on first visit if no name/code stored in localStorage
+- FloatingWidgets.tsx: remove separate left/right positioning, merge into single bottom-right cluster
+- `getBotResponse` upgraded to multilingual, step-by-step, order-aware response engine
+- Support options (WhatsApp, Email, Payment Issue) moved inside the AI chat panel as quick-action buttons when user asks for "support" or "help"
+- Greeting message updated to be bilingual-aware
 
 ### Remove
-
-- Nothing removed; existing admin tabs (Services, Portfolio, Reviews, Submissions) are preserved inside the new sidebar layout
+- Standalone left-side AI chat button
+- Standalone right-side support toggle button (replaced by stacked "?" above AI button)
 
 ## Implementation Plan
-
-1. **Backend:** Add `SiteUser`, `Officer`, `OfficerPermissions` types; implement `registerUser`, `getUser`, `listUsers`, `promoteToOfficer`, `demoteOfficer`, `updateOfficerPermissions`, `listOfficers`, `blockUser`, `unblockUser`, `isUserBlocked`; update `submitContact` to accept optional `userCode` and block check.
-
-2. **Frontend — User Identity:** Create `UserIdentityModal` component; on first visit (no localStorage `aag_user_code`), show modal to capture name, call `registerUser`, store returned code + name in localStorage.
-
-3. **Frontend — Admin PIN Lock:** Add PIN entry screen to `AdminPage` before showing the dashboard. PIN is `1207` stored client-side. After correct PIN, store session flag.
-
-4. **Frontend — Admin Sidebar Layout:** Replace flat tabs with a two-column layout: fixed left sidebar with navigation links, right content area. Sections: Dashboard, User Management, Officer Management, Services Management, Portfolio Management, Reviews Management, Spam/Block List, Settings.
-
-5. **Frontend — Dashboard Section:** Analytics cards showing stats (total users, total officers, active services, unread submissions). Recent activity list.
-
-6. **Frontend — User Management Tab:** Table of all registered users with columns: name, user code, registered date, status (active/blocked). Block/unblock toggle per user.
-
-7. **Frontend — Officer Management Tab:** List of current officers with their permissions. Form to promote a user by entering their 7-digit code and selecting permissions. Demote button per officer. Edit permissions for existing officers.
-
-8. **Frontend — Spam/Block List Tab:** List of blocked users. Unblock action.
-
-9. **Frontend — Settings Tab:** Display master admin email (`workfora.agroup@zohomail.in`), admin PIN info, platform info.
-
-10. **Validation:** Run typecheck, lint, build.
+1. Add `AIChatLog` interface and CRUD functions to `localData.ts`
+2. Rewrite `FloatingWidgets.tsx`:
+   - Single bottom-right cluster: stacked "?" button above main AI chat button
+   - Merged AI panel with support quick-actions tab and full chat
+   - `getBotResponse` with language detection (Hindi keywords), order lookup by user code, step-by-step flows
+   - Typing animation (1s delay, animated dots)
+   - Auto ticket creation flow inside chat when AI cannot help
+   - Log all conversations to localStorage
+3. Add `AdminAILogsTab.tsx` in admin pages
+4. Wire Admin AI Logs tab into `AdminPage.tsx` sidebar

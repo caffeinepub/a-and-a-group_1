@@ -18,6 +18,13 @@ export interface ContactSubmission {
   'email' : string,
   'projectDetails' : string,
 }
+export interface PaymentSettings {
+  'ifscCode' : string,
+  'accountHolderName' : string,
+  'upiId' : string,
+  'accountNumber' : string,
+  'qrCodeBlobId' : string,
+}
 export interface PortfolioItem {
   'id' : bigint,
   'title' : string,
@@ -26,6 +33,15 @@ export interface PortfolioItem {
   'mediaType' : string,
   'category' : string,
   'serviceId' : [] | [bigint],
+}
+export interface ProblemReport {
+  'id' : bigint,
+  'status' : string,
+  'name' : string,
+  'description' : string,
+  'email' : string,
+  'orderId' : [] | [string],
+  'timestamp' : bigint,
 }
 export interface Review {
   'id' : bigint,
@@ -43,8 +59,9 @@ export interface Service {
   'isAvailable' : boolean,
   'description' : string,
   'category' : string,
-  'rating' : number,
+  'rating' : bigint,
 }
+export interface UserProfile { 'name' : string }
 export type UserRole = { 'admin' : null } |
   { 'user' : null } |
   { 'guest' : null };
@@ -86,34 +103,49 @@ export interface _SERVICE {
     bigint
   >,
   'createService' : ActorMethod<
-    [string, string, string, string, number],
+    [string, string, string, string, bigint],
     bigint
   >,
   'deletePortfolio' : ActorMethod<[bigint], undefined>,
+  'deleteProblemReport' : ActorMethod<[bigint], undefined>,
   'deleteReview' : ActorMethod<[bigint], undefined>,
   'deleteService' : ActorMethod<[bigint], undefined>,
   'deleteSubmission' : ActorMethod<[bigint], undefined>,
   'filterPortfolioByCategory' : ActorMethod<[string], Array<PortfolioItem>>,
+  'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getPaymentSettings' : ActorMethod<[], [] | [PaymentSettings]>,
   'getService' : ActorMethod<[bigint], Service>,
+  'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'listPortfolioItems' : ActorMethod<[], Array<PortfolioItem>>,
+  'listProblemReports' : ActorMethod<[], Array<ProblemReport>>,
   'listReviews' : ActorMethod<[], Array<Review>>,
   'listServices' : ActorMethod<[], Array<Service>>,
   'listSubmissions' : ActorMethod<[], Array<ContactSubmission>>,
   'markAsRead' : ActorMethod<[bigint], undefined>,
+  'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'submitContact' : ActorMethod<[string, string, string], bigint>,
+  'submitProblemReport' : ActorMethod<
+    [string, string, [] | [string], string],
+    bigint
+  >,
   'toggleServiceAvailability' : ActorMethod<[bigint], undefined>,
+  'updatePaymentSettings' : ActorMethod<
+    [string, string, string, string, string],
+    undefined
+  >,
   'updatePortfolio' : ActorMethod<
     [bigint, string, string, string, string, string, [] | [bigint]],
     undefined
   >,
+  'updateProblemReportStatus' : ActorMethod<[bigint, string], undefined>,
   'updateReview' : ActorMethod<
     [bigint, string, [] | [string], string, bigint, [] | [bigint]],
     undefined
   >,
   'updateService' : ActorMethod<
-    [bigint, string, string, string, string, number],
+    [bigint, string, string, string, string, bigint],
     undefined
   >,
 }

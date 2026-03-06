@@ -23,6 +23,37 @@ export interface Officer {
   permissions: OfficerPermissions;
 }
 
+// ─── Problem Report ─────────────────────────────────────────────────────────
+
+export interface ProblemReport {
+  id: string;
+  name: string;
+  email: string;
+  orderId?: string;
+  description: string;
+  status: "pending" | "resolved";
+  createdAt: string; // ISO
+  isRead?: boolean;
+}
+
+// ─── Payment Settings ────────────────────────────────────────────────────────
+
+export interface LocalPaymentSettings {
+  upiId: string;
+  accountHolderName: string;
+  accountNumber: string;
+  ifscCode: string;
+  qrImageUrl: string; // blob URL or data URL
+}
+
+const DEFAULT_PAYMENT_SETTINGS: LocalPaymentSettings = {
+  upiId: "aloksi@ptyes",
+  accountHolderName: "Niraj Singh",
+  accountNumber: "7380869635",
+  ifscCode: "AIRP0000001",
+  qrImageUrl: "",
+};
+
 // ─── Keys ──────────────────────────────────────────────────────────────────
 
 const KEYS = {
@@ -32,6 +63,9 @@ const KEYS = {
   officers: "aag_officers",
   blockedCodes: "aag_blocked_codes",
   pinVerified: "aag_admin_pin_verified",
+  orders: "aag_orders",
+  problemReports: "aag_problem_reports",
+  paymentSettings: "aag_payment_settings",
 } as const;
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -147,6 +181,119 @@ export function isBlocked(userCode: string): boolean {
   return getBlockedCodes().includes(userCode);
 }
 
+// ─── Order Management ──────────────────────────────────────────────────────
+
+export type OrderStatus = "received" | "inProgress" | "completed";
+export type PaymentStatus = "pending" | "paid" | "completed";
+
+export interface Order {
+  id: string;
+  orderId: string; // "AAG-XXXXXXX"
+  name: string;
+  email: string;
+  whatsappNumber: string;
+  service: string;
+  projectDetails: string;
+  budget: string;
+  deadline: string;
+  status: OrderStatus;
+  paymentStatus?: PaymentStatus;
+  createdAt: string; // ISO date string
+  screenshotBlobId?: string;
+}
+
+export function generateOrderId(): string {
+  const digits = Math.floor(1_000_000 + Math.random() * 9_000_000);
+  return `AAG-${digits}`;
+}
+
+export function getOrders(): Order[] {
+  return readJSON<Order[]>(KEYS.orders, []);
+}
+
+export function addOrder(order: Order): void {
+  const orders = getOrders();
+  writeJSON(KEYS.orders, [...orders, order]);
+}
+
+export function updateOrderStatus(id: string, status: OrderStatus): void {
+  const orders = getOrders().map((o) => (o.id === id ? { ...o, status } : o));
+  writeJSON(KEYS.orders, orders);
+}
+
+export function deleteOrder(id: string): void {
+  const orders = getOrders().filter((o) => o.id !== id);
+  writeJSON(KEYS.orders, orders);
+}
+
+export function updateOrderPaymentStatus(
+  id: string,
+  status: PaymentStatus,
+): void {
+  const orders = getOrders().map((o) =>
+    o.id === id ? { ...o, paymentStatus: status } : o,
+  );
+  writeJSON(KEYS.orders, orders);
+}
+
+export function updateOrderScreenshot(
+  id: string,
+  screenshotBlobId: string,
+): void {
+  const orders = getOrders().map((o) =>
+    o.id === id ? { ...o, screenshotBlobId } : o,
+  );
+  writeJSON(KEYS.orders, orders);
+}
+
+// ─── Problem Reports ────────────────────────────────────────────────────────
+
+export function getReports(): ProblemReport[] {
+  return readJSON<ProblemReport[]>(KEYS.problemReports, []);
+}
+
+export function addReport(report: ProblemReport): void {
+  const reports = getReports();
+  writeJSON(KEYS.problemReports, [...reports, report]);
+}
+
+export function updateReportStatus(
+  id: string,
+  status: "pending" | "resolved",
+): void {
+  const reports = getReports().map((r) => (r.id === id ? { ...r, status } : r));
+  writeJSON(KEYS.problemReports, reports);
+}
+
+export function deleteReport(id: string): void {
+  const reports = getReports().filter((r) => r.id !== id);
+  writeJSON(KEYS.problemReports, reports);
+}
+
+export function markReportRead(id: string): void {
+  const reports = getReports().map((r) =>
+    r.id === id ? { ...r, isRead: true } : r,
+  );
+  writeJSON(KEYS.problemReports, reports);
+}
+
+export function getUnreadReportCount(): number {
+  return getReports().filter((r) => !r.isRead && r.status === "pending").length;
+}
+
+// ─── Payment Settings ────────────────────────────────────────────────────────
+
+export function getPaymentSettings(): LocalPaymentSettings {
+  return readJSON<LocalPaymentSettings>(
+    KEYS.paymentSettings,
+    DEFAULT_PAYMENT_SETTINGS,
+  );
+}
+
+export function setPaymentSettings(settings: LocalPaymentSettings): void {
+  writeJSON(KEYS.paymentSettings, settings);
+}
+
 // ─── Session PIN ───────────────────────────────────────────────────────────
 
 export function isPinVerified(): boolean {
@@ -159,4 +306,108 @@ export function setPinVerified(value: boolean): void {
   } else {
     sessionStorage.removeItem(KEYS.pinVerified);
   }
+}
+
+// ─── Upload Error Log ──────────────────────────────────────────────────────
+
+export interface UploadError {
+  id: string;
+  fileName: string;
+  reason: string;
+  timestamp: string; // ISO
+}
+
+// ─── Media Items ─────────────────────────────────────────────────────────────
+
+export interface MediaItem {
+  id: string;
+  name: string;
+  blobId: string;
+  mediaType: string; // 'image/jpeg', 'image/png', 'video/mp4', 'video/embed'
+  size: number; // bytes (0 for embeds)
+  uploadedAt: string; // ISO
+}
+
+// ─── Extended Keys ─────────────────────────────────────────────────────────
+
+const EXTENDED_KEYS = {
+  uploadErrors: "aag_upload_errors",
+  mediaItems: "aag_media_items",
+} as const;
+
+// ─── Upload Error CRUD ─────────────────────────────────────────────────────
+
+export function getUploadErrors(): UploadError[] {
+  return readJSON<UploadError[]>(EXTENDED_KEYS.uploadErrors, []);
+}
+
+export function addUploadError(error: UploadError): void {
+  const errors = getUploadErrors();
+  writeJSON(EXTENDED_KEYS.uploadErrors, [error, ...errors].slice(0, 100));
+}
+
+export function clearUploadErrors(): void {
+  writeJSON(EXTENDED_KEYS.uploadErrors, []);
+}
+
+// ─── Media Items CRUD ─────────────────────────────────────────────────────
+
+export function getMediaItems(): MediaItem[] {
+  return readJSON<MediaItem[]>(EXTENDED_KEYS.mediaItems, []);
+}
+
+export function addMediaItem(item: MediaItem): void {
+  const items = getMediaItems();
+  writeJSON(EXTENDED_KEYS.mediaItems, [...items, item]);
+}
+
+export function deleteMediaItem(id: string): void {
+  const items = getMediaItems().filter((m) => m.id !== id);
+  writeJSON(EXTENDED_KEYS.mediaItems, items);
+}
+
+export function replaceMediaItemBlobId(id: string, newBlobId: string): void {
+  const items = getMediaItems().map((m) =>
+    m.id === id ? { ...m, blobId: newBlobId } : m,
+  );
+  writeJSON(EXTENDED_KEYS.mediaItems, items);
+}
+
+// ─── AI Chat Logs ─────────────────────────────────────────────────────────
+
+export interface AIChatMessage {
+  role: "user" | "bot";
+  text: string;
+  timestamp: string; // ISO
+}
+
+export interface AIChatLog {
+  id: string;
+  userCode: string;
+  userName: string;
+  sessionStart: string; // ISO
+  messages: AIChatMessage[];
+}
+
+const CHAT_LOGS_KEY = "aag_ai_chat_logs";
+
+export function getChatLogs(): AIChatLog[] {
+  return readJSON<AIChatLog[]>(CHAT_LOGS_KEY, []);
+}
+
+export function saveChatLog(log: AIChatLog): void {
+  const logs = getChatLogs();
+  const idx = logs.findIndex((l) => l.id === log.id);
+  if (idx >= 0) {
+    logs[idx] = log;
+  } else {
+    logs.unshift(log);
+  }
+  // Keep latest 200 sessions
+  writeJSON(CHAT_LOGS_KEY, logs.slice(0, 200));
+}
+
+export function deleteChatLog(id: string): void {
+  const logs = getChatLogs().filter((l) => l.id !== id);
+  writeJSON(CHAT_LOGS_KEY, logs);
 }

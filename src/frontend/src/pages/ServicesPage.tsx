@@ -31,7 +31,7 @@ export default function ServicesPage() {
           icon: s.icon,
           description: s.description,
           category: s.category,
-          rating: s.rating,
+          rating: Number(s.rating),
           isAvailable: s.isAvailable,
         }))
       : DEFAULT_SERVICES.map((s) => ({

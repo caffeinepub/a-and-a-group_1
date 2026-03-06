@@ -41,7 +41,7 @@ export default function HomePage() {
           title: s.title,
           icon: s.icon,
           description: s.description,
-          rating: s.rating,
+          rating: Number(s.rating),
           isAvailable: s.isAvailable,
         }))
       : DEFAULT_SERVICES;

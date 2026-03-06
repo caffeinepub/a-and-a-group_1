@@ -1,14 +1,13 @@
 import Map "mo:core/Map";
-import Float "mo:core/Float";
-import Int "mo:core/Int";
 import Nat "mo:core/Nat";
+import Text "mo:core/Text";
+import Array "mo:core/Array";
+import Order "mo:core/Order";
+import Runtime "mo:core/Runtime";
 import Time "mo:core/Time";
 import List "mo:core/List";
-import Order "mo:core/Order";
-import Text "mo:core/Text";
 import Iter "mo:core/Iter";
-import Runtime "mo:core/Runtime";
-import Array "mo:core/Array";
+import Principal "mo:core/Principal";
 import Storage "blob-storage/Storage";
 import MixinStorage "blob-storage/Mixin";
 import MixinAuthorization "authorization/MixinAuthorization";
@@ -21,6 +20,137 @@ actor {
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
+  // User Profiles
+  public type UserProfile = {
+    name : Text;
+  };
+
+  let userProfiles = Map.empty<Principal, UserProfile>();
+
+  public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can access profiles");
+    };
+    userProfiles.get(caller);
+  };
+
+  public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
+    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Can only view your own profile");
+    };
+    userProfiles.get(user);
+  };
+
+  public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can save profiles");
+    };
+    userProfiles.add(caller, profile);
+  };
+
+  // Problem Reports
+  type ProblemReport = {
+    id : Nat;
+    name : Text;
+    email : Text;
+    orderId : ?Text;
+    description : Text;
+    status : Text;
+    timestamp : Int;
+  };
+
+  let problemReports = Map.empty<Nat, ProblemReport>();
+  var nextProblemReportId = 1;
+
+  public shared func submitProblemReport(name : Text, email : Text, orderId : ?Text, description : Text) : async Nat {
+    let id = nextProblemReportId;
+    let report : ProblemReport = {
+      id;
+      name;
+      email;
+      orderId;
+      description;
+      status = "pending";
+      timestamp = Time.now();
+    };
+    problemReports.add(id, report);
+    nextProblemReportId += 1;
+    id;
+  };
+
+  public query ({ caller }) func listProblemReports() : async [ProblemReport] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can list problem reports");
+    };
+    problemReports.values().toArray();
+  };
+
+  public shared ({ caller }) func updateProblemReportStatus(id : Nat, status : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can update problem report status");
+    };
+    switch (problemReports.get(id)) {
+      case (null) { Runtime.trap("Problem report not found") };
+      case (?report) {
+        let updatedReport : ProblemReport = {
+          id = report.id;
+          name = report.name;
+          email = report.email;
+          orderId = report.orderId;
+          description = report.description;
+          status;
+          timestamp = report.timestamp;
+        };
+        problemReports.add(id, updatedReport);
+      };
+    };
+  };
+
+  public shared ({ caller }) func deleteProblemReport(id : Nat) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can delete problem reports");
+    };
+    if (not problemReports.containsKey(id)) {
+      Runtime.trap("Problem report not found");
+    };
+    problemReports.remove(id);
+  };
+
+  // Payment Settings
+  type PaymentSettings = {
+    upiId : Text;
+    accountHolderName : Text;
+    accountNumber : Text;
+    ifscCode : Text;
+    qrCodeBlobId : Text;
+  };
+
+  var paymentSettings : ?PaymentSettings = null;
+
+  public query func getPaymentSettings() : async ?PaymentSettings {
+    paymentSettings;
+  };
+
+  public shared ({ caller }) func updatePaymentSettings(
+    upiId : Text,
+    accountHolderName : Text,
+    accountNumber : Text,
+    ifscCode : Text,
+    qrCodeBlobId : Text,
+  ) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can update payment settings");
+    };
+    let settings : PaymentSettings = {
+      upiId;
+      accountHolderName;
+      accountNumber;
+      ifscCode;
+      qrCodeBlobId;
+    };
+    paymentSettings := ?settings;
+  };
+
   // Services
   type Service = {
     id : Nat;
@@ -28,20 +158,23 @@ actor {
     description : Text;
     icon : Text;
     category : Text;
-    rating : Float;
+    rating : Nat;
     isAvailable : Bool;
   };
 
   module Service {
     public func compare(service1 : Service, service2 : Service) : Order.Order {
-      Nat.compare(service1.id, service2.id);
+      switch (Text.compare(service1.category, service2.category)) {
+        case (#equal) { Nat.compare(service1.id, service2.id) };
+        case (order) { order };
+      };
     };
   };
 
   let services = Map.empty<Nat, Service>();
   var nextServiceId = 1;
 
-  public shared ({ caller }) func createService(title : Text, description : Text, icon : Text, category : Text, rating : Float) : async Nat {
+  public shared ({ caller }) func createService(title : Text, description : Text, icon : Text, category : Text, rating : Nat) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can create services");
     };
@@ -60,7 +193,7 @@ actor {
     id;
   };
 
-  public shared ({ caller }) func updateService(id : Nat, title : Text, description : Text, icon : Text, category : Text, rating : Float) : async () {
+  public shared ({ caller }) func updateService(id : Nat, title : Text, description : Text, icon : Text, category : Text, rating : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can update services");
     };
@@ -113,7 +246,7 @@ actor {
   };
 
   public query func listServices() : async [Service] {
-    services.values().toArray().sort();
+    services.values().toArray().sort<Service>();
   };
 
   public query func getService(id : Nat) : async Service {
@@ -197,12 +330,13 @@ actor {
   };
 
   public query func listPortfolioItems() : async [PortfolioItem] {
-    portfolio.values().toArray().sort();
+    portfolio.values().toArray().sort<PortfolioItem>();
   };
 
   public query func filterPortfolioByCategory(category : Text) : async [PortfolioItem] {
     let filtered = List.empty<PortfolioItem>();
-    portfolio.entries().forEach(
+    let iter = portfolio.entries();
+    iter.forEach(
       func((_, item)) {
         if (item.category == category) {
           filtered.add(item);
@@ -225,7 +359,7 @@ actor {
 
   module Review {
     public func compare(review1 : Review, review2 : Review) : Order.Order {
-      Int.compare(review2.createdAt, review1.createdAt);
+      Nat.compare(review2.rating, review1.rating);
     };
   };
 
@@ -283,7 +417,7 @@ actor {
   };
 
   public query func listReviews() : async [Review] {
-    reviews.values().toArray().sort();
+    reviews.values().toArray().sort<Review>();
   };
 
   // Contact Submissions
@@ -298,7 +432,7 @@ actor {
 
   module ContactSubmission {
     public func compare(sub1 : ContactSubmission, sub2 : ContactSubmission) : Order.Order {
-      Int.compare(sub2.createdAt, sub1.createdAt);
+      Nat.compare(sub1.id, sub2.id);
     };
   };
 
@@ -354,6 +488,6 @@ actor {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can list submissions");
     };
-    contactSubmissions.values().toArray().sort();
+    contactSubmissions.values().toArray().sort<ContactSubmission>();
   };
 };

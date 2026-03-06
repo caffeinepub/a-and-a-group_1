@@ -18,6 +18,7 @@ import PortfolioPage from "./pages/PortfolioPage";
 import ReviewsPage from "./pages/ReviewsPage";
 import ServiceDetailPage from "./pages/ServiceDetailPage";
 import ServicesPage from "./pages/ServicesPage";
+import TrackOrderPage from "./pages/TrackOrderPage";
 import { getCurrentUser } from "./utils/localData";
 
 // ─── Root Layout ─────────────────────────────────────────────────────────
@@ -91,6 +92,12 @@ const adminRoute = createRoute({
   component: AdminPage,
 });
 
+const trackOrderRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/track-order",
+  component: TrackOrderPage,
+});
+
 // ─── Router ──────────────────────────────────────────────────────────────
 
 const routeTree = rootRoute.addChildren([
@@ -101,6 +108,7 @@ const routeTree = rootRoute.addChildren([
   reviewsRoute,
   contactRoute,
   adminRoute,
+  trackOrderRoute,
 ]);
 
 const router = createRouter({

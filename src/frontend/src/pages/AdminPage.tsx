@@ -25,10 +25,14 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Ban,
   CheckCircle2,
+  ClipboardList,
+  CreditCard,
   Eye,
   EyeOff,
+  FolderOpen,
   Image,
   LayoutDashboard,
   Loader2,
@@ -62,6 +66,8 @@ import {
   addOfficer,
   blockUser,
   getOfficers,
+  getOrders,
+  getUnreadReportCount,
   getUser,
   getUsers,
   isOfficer,
@@ -71,7 +77,11 @@ import {
   unblockUser,
   updateOfficer,
 } from "../utils/localData";
+import AdminMediaManagerTab from "./admin/AdminMediaManagerTab";
+import AdminOrdersTab from "./admin/AdminOrdersTab";
+import AdminPaymentSettingsTab from "./admin/AdminPaymentSettingsTab";
 import AdminPortfolioTab from "./admin/AdminPortfolioTab";
+import AdminReportedIssuesTab from "./admin/AdminReportedIssuesTab";
 import AdminReviewsTab from "./admin/AdminReviewsTab";
 import AdminServicesTab from "./admin/AdminServicesTab";
 import AdminSubmissionsTab from "./admin/AdminSubmissionsTab";
@@ -84,10 +94,14 @@ type Section =
   | "officers"
   | "services"
   | "portfolio"
+  | "media_manager"
   | "reviews"
   | "submissions"
+  | "orders"
   | "spam"
-  | "settings";
+  | "settings"
+  | "reported_issues"
+  | "payment_settings";
 
 const ADMIN_PIN = "1207";
 
@@ -325,6 +339,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: <Image className="w-4 h-4" />,
   },
   {
+    id: "media_manager",
+    label: "Media Manager",
+    icon: <FolderOpen className="w-4 h-4" />,
+    group: "Content",
+  },
+  {
     id: "reviews",
     label: "Reviews Management",
     icon: <Star className="w-4 h-4" />,
@@ -335,16 +355,32 @@ const NAV_ITEMS: NavItem[] = [
     icon: <MessageSquare className="w-4 h-4" />,
   },
   {
+    id: "orders",
+    label: "Order Management",
+    icon: <ClipboardList className="w-4 h-4" />,
+  },
+  {
     id: "spam",
     label: "Spam / Block List",
     icon: <Ban className="w-4 h-4" />,
     group: "Security",
   },
   {
+    id: "reported_issues",
+    label: "Reported Issues",
+    icon: <AlertTriangle className="w-4 h-4" />,
+    group: "Support",
+  },
+  {
+    id: "payment_settings",
+    label: "Payment Settings",
+    icon: <CreditCard className="w-4 h-4" />,
+    group: "System",
+  },
+  {
     id: "settings",
     label: "Settings",
     icon: <Settings className="w-4 h-4" />,
-    group: "System",
   },
 ];
 
@@ -352,10 +388,12 @@ function Sidebar({
   active,
   onNavigate,
   onClose,
+  badgeCounts,
 }: {
   active: Section;
   onNavigate: (s: Section) => void;
   onClose?: () => void;
+  badgeCounts?: Partial<Record<Section, number>>;
 }) {
   let lastGroup = "";
 
@@ -394,6 +432,7 @@ function Sidebar({
             const showGroup = item.group && item.group !== lastGroup;
             if (item.group) lastGroup = item.group;
             const isActive = active === item.id;
+            const badgeCount = badgeCounts?.[item.id] ?? 0;
 
             return (
               <div key={item.id}>
@@ -419,7 +458,12 @@ function Sidebar({
                   <span className={isActive ? "text-primary" : "text-current"}>
                     {item.icon}
                   </span>
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {badgeCount > 0 && (
+                    <span className="ml-auto inline-flex items-center justify-center w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex-shrink-0">
+                      {badgeCount > 99 ? "99+" : badgeCount}
+                    </span>
+                  )}
                 </button>
               </div>
             );
@@ -439,10 +483,14 @@ function DashboardSection() {
   const { data: reviews, isLoading: revLoading } = useListReviews();
   const [users, setUsers] = useState<SiteUser[]>([]);
   const [officers, setOfficers] = useState<Officer[]>([]);
+  const [orderCount, setOrderCount] = useState(0);
+  const [pendingReports, setPendingReports] = useState(0);
 
   useEffect(() => {
     setUsers(getUsers());
     setOfficers(getOfficers());
+    setOrderCount(getOrders().length);
+    setPendingReports(getUnreadReportCount());
   }, []);
 
   const unreadCount = submissions?.filter((s) => !s.isRead).length ?? 0;
@@ -475,6 +523,12 @@ function DashboardSection() {
       loading: subLoading,
     },
     {
+      label: "Pending Reports",
+      value: pendingReports,
+      icon: <AlertTriangle className="w-5 h-5" />,
+      color: "amber",
+    },
+    {
       label: "Portfolio Items",
       value: portfolio?.length ?? 0,
       icon: <Image className="w-5 h-5" />,
@@ -487,6 +541,12 @@ function DashboardSection() {
       icon: <Star className="w-5 h-5" />,
       color: "primary",
       loading: revLoading,
+    },
+    {
+      label: "Total Orders",
+      value: orderCount,
+      icon: <ClipboardList className="w-5 h-5" />,
+      color: "accent",
     },
   ];
 
@@ -501,6 +561,7 @@ function DashboardSection() {
     primary: "text-primary bg-primary/10 border-primary/20",
     accent: "text-accent bg-accent/10 border-accent/20",
     destructive: "text-destructive bg-destructive/10 border-destructive/20",
+    amber: "text-amber-400 bg-amber-500/10 border-amber-500/20",
   };
 
   return (
@@ -1403,10 +1464,28 @@ export default function AdminPage() {
   const { identity, login, clear, isLoggingIn, isInitializing } =
     useInternetIdentity();
   const queryClient = useQueryClient();
+  const { data: submissions } = useListSubmissions();
 
   const [pinVerified, setPinVerifiedState] = useState(isPinVerified);
   const [activeSection, setActiveSection] = useState<Section>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [unreadReports, setUnreadReports] = useState(() =>
+    getUnreadReportCount(),
+  );
+
+  // Recompute badge counts when section changes (after visiting reported_issues tab it will clear)
+  const handleNavigate = (s: Section) => {
+    setActiveSection(s);
+    // Refresh report count when user navigates away from issues
+    setUnreadReports(getUnreadReportCount());
+  };
+
+  const unreadSubmissions = submissions?.filter((s) => !s.isRead).length ?? 0;
+
+  const badgeCounts: Partial<Record<Section, number>> = {
+    reported_issues: unreadReports,
+    submissions: unreadSubmissions,
+  };
 
   const isAuthenticated = !!identity;
 
@@ -1516,12 +1595,24 @@ export default function AdminPage() {
         return <AdminServicesTab />;
       case "portfolio":
         return <AdminPortfolioTab />;
+      case "media_manager":
+        return <AdminMediaManagerTab />;
       case "reviews":
         return <AdminReviewsTab />;
       case "submissions":
         return <AdminSubmissionsTab />;
+      case "orders":
+        return <AdminOrdersTab />;
       case "spam":
         return <SpamSection />;
+      case "reported_issues":
+        return (
+          <AdminReportedIssuesTab
+            onReportsRead={() => setUnreadReports(getUnreadReportCount())}
+          />
+        );
+      case "payment_settings":
+        return <AdminPaymentSettingsTab />;
       case "settings":
         return <SettingsSection onLogout={handleLogout} />;
       default:
@@ -1566,7 +1657,11 @@ export default function AdminPage() {
       <div className="flex flex-1 pt-12">
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex flex-col w-64 fixed top-28 bottom-0 left-0 border-r border-border bg-card/60 backdrop-blur-sm z-30">
-          <Sidebar active={activeSection} onNavigate={setActiveSection} />
+          <Sidebar
+            active={activeSection}
+            onNavigate={handleNavigate}
+            badgeCounts={badgeCounts}
+          />
         </aside>
 
         {/* Mobile Sidebar Overlay */}
@@ -1589,8 +1684,9 @@ export default function AdminPage() {
               >
                 <Sidebar
                   active={activeSection}
-                  onNavigate={setActiveSection}
+                  onNavigate={handleNavigate}
                   onClose={() => setSidebarOpen(false)}
+                  badgeCounts={badgeCounts}
                 />
               </motion.aside>
             </>

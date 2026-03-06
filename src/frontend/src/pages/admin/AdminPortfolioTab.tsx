@@ -53,6 +53,7 @@ interface PortfolioForm {
   title: string;
   category: string;
   description: string;
+  embedUrl: string;
 }
 
 export default function AdminPortfolioTab() {
@@ -67,6 +68,7 @@ export default function AdminPortfolioTab() {
     title: "",
     category: "Graphic Design",
     description: "",
+    embedUrl: "",
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -77,23 +79,47 @@ export default function AdminPortfolioTab() {
   };
 
   const handleCreate = async () => {
-    if (!form.title || !selectedFile) {
-      toast.error("Please fill in the title and select a file.");
+    if (!form.title) {
+      toast.error("Please fill in the title.");
       return;
     }
+    if (!selectedFile && !form.embedUrl.trim()) {
+      toast.error("Please select a file or enter an embed URL.");
+      return;
+    }
+
     try {
-      const blobId = await uploadFile(selectedFile);
+      let blobId: string;
+      let mediaType: string;
+
+      if (form.embedUrl.trim()) {
+        // Embed URL path — skip file upload
+        blobId = `embed::${form.embedUrl.trim()}`;
+        mediaType = "video/embed";
+      } else if (selectedFile) {
+        blobId = await uploadFile(selectedFile);
+        mediaType = selectedFile.type;
+      } else {
+        toast.error("Please select a file or enter an embed URL.");
+        return;
+      }
+
       await createPortfolio.mutateAsync({
         title: form.title,
         category: form.category,
         description: form.description,
         blobId,
-        mediaType: selectedFile.type,
+        mediaType,
         serviceId: null,
       });
       toast.success("Portfolio item added!");
       setDialogOpen(false);
-      setForm({ title: "", category: "Graphic Design", description: "" });
+      setForm({
+        title: "",
+        category: "Graphic Design",
+        description: "",
+        embedUrl: "",
+      });
       setSelectedFile(null);
     } catch {
       toast.error("Upload failed. Please try again.");
@@ -257,12 +283,20 @@ export default function AdminPortfolioTab() {
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">File *</Label>
+              <Label className="text-sm text-muted-foreground">
+                File {!form.embedUrl.trim() && "*"}
+              </Label>
               <button
                 type="button"
-                onClick={() => fileRef.current?.click()}
+                onClick={() =>
+                  !form.embedUrl.trim() && fileRef.current?.click()
+                }
                 data-ocid="admin.portfolio.dropzone"
-                className="w-full border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all"
+                className={`w-full border-2 border-dashed rounded-xl p-6 text-center transition-all ${
+                  form.embedUrl.trim()
+                    ? "border-border/30 opacity-40 cursor-not-allowed"
+                    : "border-border cursor-pointer hover:border-primary/50 hover:bg-primary/5"
+                }`}
               >
                 {selectedFile ? (
                   <div className="text-sm text-foreground font-body">
@@ -289,6 +323,37 @@ export default function AdminPortfolioTab() {
                 className="hidden"
                 data-ocid="admin.portfolio.upload_button"
               />
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-xs text-muted-foreground/50 font-body">
+                — OR —
+              </span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+
+            {/* Embed URL */}
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">
+                Embed via URL {!selectedFile && "(YouTube / Google Drive)"}
+              </Label>
+              <Input
+                value={form.embedUrl}
+                onChange={(e) => {
+                  setForm((p) => ({ ...p, embedUrl: e.target.value }));
+                  if (e.target.value.trim()) setSelectedFile(null);
+                }}
+                placeholder="YouTube or Google Drive URL"
+                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50"
+                data-ocid="admin.portfolio.embed_url.input"
+              />
+              {form.embedUrl.trim() && (
+                <p className="text-xs text-primary/70 font-body">
+                  ✓ File upload disabled — embed URL will be used
+                </p>
+              )}
             </div>
             {isUploading && (
               <div className="space-y-1">

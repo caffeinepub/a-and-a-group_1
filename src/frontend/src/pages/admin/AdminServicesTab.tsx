@@ -75,7 +75,7 @@ export default function AdminServicesTab() {
               icon: s.icon,
               description: s.description,
               category: s.category,
-              rating: s.rating,
+              rating: BigInt(Math.round(s.rating)),
               isAvailable: s.isAvailable,
             }) as Service,
         );
@@ -103,7 +103,7 @@ export default function AdminServicesTab() {
       toast.error("Please fill in all required fields.");
       return;
     }
-    const rating = Number.parseFloat(form.rating) || 4.8;
+    const rating = BigInt(Math.round(Number.parseFloat(form.rating) || 5));
     try {
       if (editingService) {
         await updateService.mutateAsync({

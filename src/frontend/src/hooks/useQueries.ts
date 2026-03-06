@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   ContactSubmission,
+  PaymentSettings,
   PortfolioItem,
+  ProblemReport,
   Review,
   Service,
 } from "../backend.d";
@@ -42,7 +44,7 @@ export function useCreateService() {
       description: string;
       icon: string;
       category: string;
-      rating: number;
+      rating: bigint;
     }) => {
       if (!actor) throw new Error("Actor not available");
       return actor.createService(
@@ -67,7 +69,7 @@ export function useUpdateService() {
       description: string;
       icon: string;
       category: string;
-      rating: number;
+      rating: bigint;
     }) => {
       if (!actor) throw new Error("Actor not available");
       return actor.updateService(
@@ -299,6 +301,113 @@ export function useDeleteSubmission() {
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["submissions"] }),
+  });
+}
+
+// ─── Problem Reports ───────────────────────────────────────────────────────
+
+export function useSubmitProblemReport() {
+  const { actor } = useActor();
+  return useMutation({
+    mutationFn: async (data: {
+      name: string;
+      email: string;
+      orderId: string | null;
+      description: string;
+    }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.submitProblemReport(
+        data.name,
+        data.email,
+        data.orderId,
+        data.description,
+      );
+    },
+  });
+}
+
+export function useListProblemReports() {
+  const { actor, isFetching } = useActor();
+  return useQuery<ProblemReport[]>({
+    queryKey: ["problemReports"],
+    queryFn: async () => {
+      if (!actor) return [];
+      try {
+        return await actor.listProblemReports();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useUpdateProblemReportStatus() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { id: bigint; status: string }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.updateProblemReportStatus(data.id, data.status);
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["problemReports"] }),
+  });
+}
+
+export function useDeleteProblemReport() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.deleteProblemReport(id);
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["problemReports"] }),
+  });
+}
+
+// ─── Payment Settings ──────────────────────────────────────────────────────
+
+export function useGetPaymentSettings() {
+  const { actor, isFetching } = useActor();
+  return useQuery<PaymentSettings | null>({
+    queryKey: ["paymentSettings"],
+    queryFn: async () => {
+      if (!actor) return null;
+      try {
+        return await actor.getPaymentSettings();
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useUpdatePaymentSettings() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      upiId: string;
+      accountHolderName: string;
+      accountNumber: string;
+      ifscCode: string;
+      qrCodeBlobId: string;
+    }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.updatePaymentSettings(
+        data.upiId,
+        data.accountHolderName,
+        data.accountNumber,
+        data.ifscCode,
+        data.qrCodeBlobId,
+      );
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["paymentSettings"] }),
   });
 }
 
