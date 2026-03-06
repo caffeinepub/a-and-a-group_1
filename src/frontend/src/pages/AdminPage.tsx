@@ -190,6 +190,9 @@ function PinScreen({ onSuccess }: { onSuccess: () => void }) {
       const entered = [...next.slice(0, 3), value].join("");
       if (entered === ADMIN_PIN) {
         setPinVerified(true);
+        // Auto-set admin identity so access guard passes regardless of registered user code
+        localStorage.setItem("aag_user_name", "Master Admin");
+        localStorage.setItem("aag_user_code", MASTER_ADMIN_CODE);
         onSuccess();
       } else {
         setError(true);
@@ -218,6 +221,9 @@ function PinScreen({ onSuccess }: { onSuccess: () => void }) {
     if (entered.length < 4) return;
     if (entered === ADMIN_PIN) {
       setPinVerified(true);
+      // Auto-set admin identity so access guard passes regardless of registered user code
+      localStorage.setItem("aag_user_name", "Master Admin");
+      localStorage.setItem("aag_user_code", MASTER_ADMIN_CODE);
       onSuccess();
     } else {
       setError(true);
@@ -985,24 +991,33 @@ function OfficerManagementSection() {
     setPromoteCode(val);
     setCodeError("");
     if (val.length === 7) {
+      // 1. Check localStorage (same device)
       const found = getUser(val);
       if (found) {
         setCodePreview(found);
         setCodeError("");
-      } else {
-        // Also search backend-registered users (users from other devices)
-        if (submissions) {
-          const backendUsers = parseBackendUsers(submissions);
-          const backendFound = backendUsers.find((u) => u.userCode === val);
-          if (backendFound) {
-            setCodePreview(backendFound);
-            setCodeError("");
-            return;
-          }
-        }
-        setCodePreview(null);
-        setCodeError("No user found with this code.");
+        return;
       }
+      // 2. Check backend-registered users (other devices / central server)
+      if (submissions) {
+        const backendUsers = parseBackendUsers(submissions);
+        const backendFound = backendUsers.find((u) => u.userCode === val);
+        if (backendFound) {
+          setCodePreview(backendFound);
+          setCodeError("");
+          return;
+        }
+      }
+      // 3. Allow promoting by code even if user not in backend yet
+      //    (user may have registered before backend sync was set up)
+      //    Show a generic preview so admin can still promote
+      setCodePreview({
+        userCode: val,
+        name: `User ${val}`,
+        registeredAt: new Date().toISOString(),
+        isBlocked: false,
+      });
+      setCodeError("");
     } else {
       setCodePreview(null);
     }
