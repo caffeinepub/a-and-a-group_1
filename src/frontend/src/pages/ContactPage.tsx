@@ -32,14 +32,13 @@ import {
   useGetPaymentSettings,
   useSubmitContact,
   useSubmitOrder,
+  useUpdateOrderScreenshot,
 } from "../hooks/useQueries";
 import {
   type Order,
-  addOrder,
   generateOrderId,
   getCurrentUser,
   isBlocked,
-  updateOrderScreenshot,
 } from "../utils/localData";
 
 const SERVICES = [
@@ -97,7 +96,16 @@ function PaymentSection({ orderId }: { orderId: string }) {
   const { data: backendSettings } = useGetPaymentSettings();
   const { getFileUrl } = useBlobStorage();
   const [qrUrl, setQrUrl] = useState<string>("");
-  const settings = backendSettings ?? DEFAULT_PAYMENT;
+  // Use only backend settings; fall back to DEFAULTS if backend returns null
+  const settings = {
+    upiId: backendSettings?.upiId || DEFAULT_PAYMENT.upiId,
+    accountHolderName:
+      backendSettings?.accountHolderName || DEFAULT_PAYMENT.accountHolderName,
+    accountNumber:
+      backendSettings?.accountNumber || DEFAULT_PAYMENT.accountNumber,
+    ifscCode: backendSettings?.ifscCode || DEFAULT_PAYMENT.ifscCode,
+    qrCodeBlobId: backendSettings?.qrCodeBlobId || DEFAULT_PAYMENT.qrCodeBlobId,
+  };
 
   // Load QR image URL from blob storage whenever blobId changes
   useEffect(() => {
@@ -340,8 +348,16 @@ function PaymentSection({ orderId }: { orderId: string }) {
 
 // ─── Screenshot Upload Section ───────────────────────────────────────────────
 
-function ScreenshotUploadSection({ order }: { order: Order }) {
+function ScreenshotUploadSection({
+  order,
+  backendId,
+}: {
+  order: Order;
+  backendId: bigint | null;
+}) {
   const { uploadFile, uploadProgress, isUploading } = useBlobStorage();
+  const { mutateAsync: updateOrderScreenshotBackend } =
+    useUpdateOrderScreenshot();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadStatus, setUploadStatus] = useState<
     "idle" | "uploading" | "success" | "error"
@@ -367,7 +383,13 @@ function ScreenshotUploadSection({ order }: { order: Order }) {
           setRetryMessage(`Upload failed. Retrying... (${attempt}/${3})`);
         },
       });
-      updateOrderScreenshot(order.id, blobId);
+      // Save screenshot to central backend if we have a backend order ID
+      if (backendId !== null) {
+        await updateOrderScreenshotBackend({
+          id: backendId,
+          screenshotBlobId: blobId,
+        });
+      }
       setUploadStatus("success");
       setRetryMessage("");
       toast.success("Screenshot uploaded successfully ✅");
@@ -550,8 +572,10 @@ export default function ContactPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [submitted, setSubmitted] = useState(false);
   const [submittedOrder, setSubmittedOrder] = useState<Order | null>(null);
-  const { mutateAsync: submitContact, isPending } = useSubmitContact();
-  const { mutateAsync: submitOrderBackend } = useSubmitOrder();
+  const [backendOrderId, setBackendOrderId] = useState<bigint | null>(null);
+  const { mutateAsync: submitContact } = useSubmitContact();
+  const { mutateAsync: submitOrderBackend, isPending: isSubmittingOrder } =
+    useSubmitOrder();
 
   // Service quick-message flow
   const [showSendMsg, setShowSendMsg] = useState(false);
@@ -609,10 +633,27 @@ export default function ContactPage() {
       createdAt: new Date().toISOString(),
     };
 
-    // Save to localStorage (fallback)
-    addOrder(order);
+    // Await backend submission — this is the PRIMARY save (central server)
+    let newBackendId: bigint | null = null;
+    try {
+      newBackendId = await submitOrderBackend({
+        orderId: order.orderId,
+        name: order.name,
+        email: order.email,
+        whatsappNumber: order.whatsappNumber,
+        service: order.service,
+        projectDetails: order.projectDetails,
+        budget: order.budget,
+        deadline: order.deadline,
+      });
+    } catch {
+      toast.error(
+        "Failed to submit order. Please check your connection and try again.",
+      );
+      return;
+    }
 
-    // Non-blocking backend submits (run in parallel)
+    // Non-blocking user registration tracking (fine as side-effect)
     submitContact({
       name: form.name,
       email: form.email,
@@ -621,19 +662,7 @@ export default function ContactPage() {
       // silent
     });
 
-    submitOrderBackend({
-      orderId: order.orderId,
-      name: order.name,
-      email: order.email,
-      whatsappNumber: order.whatsappNumber,
-      service: order.service,
-      projectDetails: order.projectDetails,
-      budget: order.budget,
-      deadline: order.deadline,
-    }).catch(() => {
-      // silent — localStorage fallback already saved
-    });
-
+    setBackendOrderId(newBackendId ?? null);
     setSubmittedOrder(order);
     setSubmitted(true);
     toast.success("Order submitted successfully!");
@@ -678,6 +707,7 @@ export default function ContactPage() {
     setForm(EMPTY_FORM);
     setSubmitted(false);
     setSubmittedOrder(null);
+    setBackendOrderId(null);
     setShowSendMsg(false);
     setShowWaBtn(false);
   };
@@ -947,10 +977,10 @@ export default function ContactPage() {
                     <Button
                       type="submit"
                       data-ocid="order.submit.primary_button"
-                      disabled={isPending || !form.service}
+                      disabled={isSubmittingOrder || !form.service}
                       className="w-full py-6 font-display font-bold text-base bg-primary text-primary-foreground hover:shadow-neon-blue transition-all duration-300 disabled:opacity-50"
                     >
-                      {isPending ? (
+                      {isSubmittingOrder ? (
                         <>
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           Processing...
@@ -1071,7 +1101,10 @@ export default function ContactPage() {
 
                   {/* Payment Screenshot Upload */}
                   {submittedOrder && (
-                    <ScreenshotUploadSection order={submittedOrder} />
+                    <ScreenshotUploadSection
+                      order={submittedOrder}
+                      backendId={backendOrderId}
+                    />
                   )}
 
                   {/* Reset */}

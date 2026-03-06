@@ -48,25 +48,31 @@ export default function AdminPaymentSettingsTab() {
   const { mutateAsync: updatePaymentSettings } = useUpdatePaymentSettings();
   const { uploadFile, getFileUrl } = useBlobStorage();
 
-  // Load existing backend settings on mount
+  // Load settings from backend only — no localStorage fallback
   useEffect(() => {
-    if (!backendSettings) return;
     const loadSettings = async () => {
+      const upiId = backendSettings?.upiId || DEFAULTS.upiId;
+      const accountHolderName =
+        backendSettings?.accountHolderName || DEFAULTS.accountHolderName;
+      const accountNumber =
+        backendSettings?.accountNumber || DEFAULTS.accountNumber;
+      const ifscCode = backendSettings?.ifscCode || DEFAULTS.ifscCode;
+      const qrCodeBlobId = backendSettings?.qrCodeBlobId || "";
+
       let qrPreviewUrl = "";
-      if (backendSettings.qrCodeBlobId) {
+      if (qrCodeBlobId) {
         try {
-          qrPreviewUrl = await getFileUrl(backendSettings.qrCodeBlobId);
+          qrPreviewUrl = await getFileUrl(qrCodeBlobId);
         } catch {
           qrPreviewUrl = "";
         }
       }
       setForm({
-        upiId: backendSettings.upiId || DEFAULTS.upiId,
-        accountHolderName:
-          backendSettings.accountHolderName || DEFAULTS.accountHolderName,
-        accountNumber: backendSettings.accountNumber || DEFAULTS.accountNumber,
-        ifscCode: backendSettings.ifscCode || DEFAULTS.ifscCode,
-        qrCodeBlobId: backendSettings.qrCodeBlobId || "",
+        upiId,
+        accountHolderName,
+        accountNumber,
+        ifscCode,
+        qrCodeBlobId,
         qrPreviewUrl,
       });
     };
@@ -109,6 +115,7 @@ export default function AdminPaymentSettingsTab() {
 
   const handleSave = async () => {
     setIsSaving(true);
+    // Save ONLY to backend — central server, visible to all users
     try {
       await updatePaymentSettings({
         upiId: form.upiId,

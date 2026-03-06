@@ -31,12 +31,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSubmitProblemReport } from "../hooks/useQueries";
 import type { AIChatLog, AIChatMessage } from "../utils/localData";
-import {
-  getChatLogs,
-  getCurrentUser,
-  getOrders,
-  saveChatLog,
-} from "../utils/localData";
+import { getChatLogs, getCurrentUser, saveChatLog } from "../utils/localData";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -58,61 +53,20 @@ interface BotResult {
   canResolve: boolean;
 }
 
-function getAIResponse(input: string, userCode: string): BotResult {
+function getAIResponse(input: string, _userCode: string): BotResult {
   const isHindi = detectHindi(input);
   const q = input.toLowerCase();
 
   // ── Order lookup ────────────────────────────────────────────────────────
+  // NOTE: Order lookup in AI chat is limited to guiding users to the My Orders
+  // page since orders are stored on the central backend (not localStorage).
+  // Full order details can be found at the My Orders page using the Order ID.
   const orderIdMatch = input.match(/AAG-\d{7}/i);
   if (orderIdMatch) {
-    const allOrders = getOrders();
-    const isAdmin = userCode === ADMIN_CODE;
-    const userOrders = isAdmin
-      ? allOrders
-      : allOrders.filter(
-          (o) =>
-            o.name?.toLowerCase() === userCode.toLowerCase() ||
-            o.email?.includes(userCode) ||
-            o.orderId === orderIdMatch[0].toUpperCase(),
-        );
-    const found = allOrders.find(
-      (o) => o.orderId === orderIdMatch[0].toUpperCase(),
-    );
-    if (found) {
-      const allowed = isAdmin || userOrders.some((o) => o.id === found.id);
-      if (!allowed) {
-        return {
-          text: isHindi
-            ? "यह Order ID आपके account से match नहीं करती। कृपया अपना सही Order ID दर्ज करें।"
-            : "This Order ID doesn't match your account. Please enter your correct Order ID.",
-          canResolve: true,
-        };
-      }
-      const statusMap: Record<string, string> = {
-        received: isHindi ? "प्राप्त हुआ" : "Received",
-        inProgress: isHindi ? "काम चल रहा है" : "In Progress",
-        completed: isHindi ? "पूरा हो गया" : "Completed",
-      };
-      const payMap: Record<string, string> = {
-        pending: isHindi ? "Pending" : "Pending",
-        paid: isHindi ? "Paid" : "Paid",
-        completed: isHindi ? "Completed" : "Completed",
-      };
-      if (isHindi) {
-        return {
-          text: `**Order Details**\n\nOrder ID: ${found.orderId}\nService: ${found.service}\nDate: ${new Date(found.createdAt).toLocaleDateString("hi-IN")}\nStatus: ${statusMap[found.status] ?? found.status}\nPayment: ${payMap[found.paymentStatus ?? "pending"] ?? "Pending"}\n\nकोई और जानकारी चाहिए तो बताएं!`,
-          canResolve: true,
-        };
-      }
-      return {
-        text: `**Order Details**\n\nOrder ID: ${found.orderId}\nService: ${found.service}\nDate: ${new Date(found.createdAt).toLocaleDateString()}\nStatus: ${statusMap[found.status] ?? found.status}\nPayment: ${payMap[found.paymentStatus ?? "pending"] ?? "Pending"}\n\nNeed anything else?`,
-        canResolve: true,
-      };
-    }
     return {
       text: isHindi
-        ? `Order ID **${orderIdMatch[0].toUpperCase()}** नहीं मिली। कृपया सही ID दर्ज करें (format: AAG-XXXXXXX)।`
-        : `Order ID **${orderIdMatch[0].toUpperCase()}** not found. Please check your ID (format: AAG-XXXXXXX).`,
+        ? `Order ID **${orderIdMatch[0].toUpperCase()}** के लिए:\n\n📦 **My Orders** page पर जाएं\n🔍 अपना Order ID search करें\n\nवहाँ आपको complete order details, payment status, और progress दिखेगा।`
+        : `For Order ID **${orderIdMatch[0].toUpperCase()}**:\n\n📦 Go to the **My Orders** page\n🔍 Search with your Order ID\n\nYou'll see complete order details, payment status, and progress there.`,
       canResolve: true,
     };
   }
@@ -687,20 +641,36 @@ function AIChatPanel({ onClose }: { onClose: () => void }) {
   };
 
   const handleTicketSubmit = async (data: TicketData) => {
-    let ticketRef = `TKT-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-    try {
-      const backendId = await submitReport({
-        name: data.name,
-        email: data.email,
-        orderId: data.orderId || null,
-        description: `[${data.issueType}] ${data.description}`,
-      });
-      if (backendId !== undefined && backendId !== null) {
-        ticketRef = `TKT-${backendId.toString().padStart(6, "0")}`;
+    let backendId: bigint | null = null;
+
+    // Try up to 2 times to save to backend
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await submitReport({
+          name: data.name,
+          email: data.email,
+          orderId: data.orderId || null,
+          description: `[${data.issueType}] ${data.description}`,
+        });
+        if (result !== undefined && result !== null) {
+          backendId = result;
+          break; // success — stop retrying
+        }
+      } catch {
+        if (attempt === 0) {
+          // Wait 1 second before retry
+          await new Promise((r) => setTimeout(r, 1000));
+        }
       }
-    } catch {
-      // backend unavailable — still show confirmation
     }
+
+    // If backend failed after 2 retries, show error and stop
+    if (backendId === null) {
+      toast.error("Failed to submit ticket. Please try again.");
+      return;
+    }
+
+    const ticketRef = `TKT-${backendId.toString().padStart(6, "0")}`;
 
     const confirmMsg: ChatMessage = {
       id: `b-confirm-${Date.now()}`,

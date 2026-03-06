@@ -8,11 +8,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { PortfolioItem } from "../backend.d";
 import { useBlobStorage } from "../hooks/useBlobStorage";
 import { useListPortfolio } from "../hooks/useQueries";
-import { type MediaItem, getMediaItems } from "../utils/localData";
 
 // ─── Categories ─────────────────────────────────────────────────────────────
 
@@ -23,13 +22,8 @@ const BACKEND_CATEGORIES = [
   "Graphic Design",
   "Websites",
   "App UI",
-];
-
-const MEDIA_CATEGORIES = ["Images", "Videos"];
-
-const ALL_CATEGORIES = [
-  ...BACKEND_CATEGORIES,
-  ...MEDIA_CATEGORIES.filter((c) => !BACKEND_CATEGORIES.includes(c)),
+  "Images",
+  "Videos",
 ];
 
 // ─── Sample Portfolio ────────────────────────────────────────────────────────
@@ -282,190 +276,15 @@ function PortfolioCardWithImage({
   );
 }
 
-// ─── Media Portfolio Card ────────────────────────────────────────────────────
-
-function MediaPortfolioCard({
-  item,
-  index,
-}: {
-  item: MediaItem;
-  index: number;
-}) {
-  const { getFileUrl } = useBlobStorage();
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (item.mediaType.startsWith("image/") || item.mediaType === "video/mp4") {
-      getFileUrl(item.blobId)
-        .then((url) => {
-          if (!cancelled) setMediaUrl(url);
-        })
-        .catch(() => {});
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [item.blobId, item.mediaType, getFileUrl]);
-
-  // YouTube embed
-  if (item.mediaType === "video/embed") {
-    const ytId = getYouTubeId(item.blobId);
-    const thumbnailUrl = ytId
-      ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`
-      : null;
-
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-40px" }}
-        transition={{ duration: 0.5, delay: Math.min(index * 0.08, 0.4) }}
-        className="group relative rounded-xl overflow-hidden border border-border hover:border-accent/40 hover:shadow-neon-purple-sm transition-all duration-300 hover:-translate-y-1 bg-card"
-      >
-        <div className="aspect-video relative overflow-hidden bg-gradient-to-br from-accent/20 to-primary/20 flex items-center justify-center">
-          {thumbnailUrl ? (
-            <img
-              src={thumbnailUrl}
-              alt={item.name}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="flex flex-col items-center gap-2 text-foreground/30">
-              <Play className="w-8 h-8" />
-              <span className="text-xs font-body">Video</span>
-            </div>
-          )}
-          {/* Play overlay */}
-          <a
-            href={item.blobId}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-          >
-            <div className="w-12 h-12 rounded-full bg-accent/70 border border-white/30 flex items-center justify-center shadow-lg">
-              <Play className="w-5 h-5 text-white fill-white" />
-            </div>
-          </a>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        </div>
-        <div className="p-4">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <h3 className="font-display font-semibold text-sm text-foreground line-clamp-1 group-hover:text-accent transition-colors">
-              {item.name}
-            </h3>
-            <Badge className="text-[10px] border-accent/20 text-accent bg-accent/10 font-body flex-shrink-0">
-              Video
-            </Badge>
-          </div>
-          <a
-            href={item.blobId}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[10px] text-accent/70 hover:text-accent font-body mt-1 transition-colors"
-          >
-            <ExternalLink className="w-2.5 h-2.5" />
-            Open Video
-          </a>
-        </div>
-      </motion.div>
-    );
-  }
-
-  // Image
-  if (item.mediaType.startsWith("image/")) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-40px" }}
-        transition={{ duration: 0.5, delay: Math.min(index * 0.08, 0.4) }}
-        className="group relative rounded-xl overflow-hidden border border-border hover:border-primary/40 hover:shadow-neon-blue-sm transition-all duration-300 hover:-translate-y-1 bg-card"
-      >
-        <div className="aspect-video relative overflow-hidden bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center">
-          {mediaUrl ? (
-            <img
-              src={mediaUrl}
-              alt={item.name}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <ImageIcon className="w-8 h-8 text-foreground/30" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        </div>
-        <div className="p-4">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <h3 className="font-display font-semibold text-sm text-foreground line-clamp-1 group-hover:text-primary transition-colors">
-              {item.name}
-            </h3>
-            <Badge
-              variant="outline"
-              className="text-[10px] flex-shrink-0 border-primary/20 text-primary font-body"
-            >
-              Image
-            </Badge>
-          </div>
-        </div>
-      </motion.div>
-    );
-  }
-
-  // MP4 video
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-40px" }}
-      transition={{ duration: 0.5, delay: Math.min(index * 0.08, 0.4) }}
-      className="group relative rounded-xl overflow-hidden border border-border hover:border-accent/40 hover:shadow-neon-purple-sm transition-all duration-300 hover:-translate-y-1 bg-card"
-    >
-      <div className="aspect-video relative overflow-hidden bg-gradient-to-br from-accent/10 to-primary/10 flex items-center justify-center">
-        {mediaUrl ? (
-          <video
-            src={mediaUrl}
-            preload="metadata"
-            className="w-full h-full object-cover"
-            muted
-          />
-        ) : (
-          <Play className="w-8 h-8 text-foreground/30" />
-        )}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="w-12 h-12 rounded-full bg-black/50 border border-white/20 flex items-center justify-center">
-            <Play className="w-5 h-5 text-white fill-white" />
-          </div>
-        </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-      </div>
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <h3 className="font-display font-semibold text-sm text-foreground line-clamp-1 group-hover:text-accent transition-colors">
-            {item.name}
-          </h3>
-          <Badge className="text-[10px] flex-shrink-0 border-accent/20 text-accent bg-accent/10 font-body">
-            Video
-          </Badge>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function PortfolioPage() {
   const [activeCategory, setActiveCategory] = useState("All");
   const { data: portfolioItems, isLoading } = useListPortfolio();
-  const [mediaItems] = useState<MediaItem[]>(() => getMediaItems());
 
   const hasBackendItems = portfolioItems && portfolioItems.length > 0;
-  const hasMediaItems = mediaItems.length > 0;
 
-  // Determine which categories to show
-  const categoriesToShow = hasMediaItems ? ALL_CATEGORIES : BACKEND_CATEGORIES;
-
-  // Filter backend items
+  // Filter backend items (includes Media Manager uploads saved via createPortfolio)
   const filteredBackend = !portfolioItems
     ? []
     : activeCategory === "All"
@@ -474,28 +293,13 @@ export default function PortfolioPage() {
           (i: PortfolioItem) => i.category === activeCategory,
         );
 
-  // Filter media items
-  const filteredMedia =
-    activeCategory === "All"
-      ? mediaItems
-      : activeCategory === "Images"
-        ? mediaItems.filter((i) => i.mediaType.startsWith("image/"))
-        : activeCategory === "Videos"
-          ? mediaItems.filter(
-              (i) =>
-                i.mediaType.startsWith("video/") ||
-                i.mediaType === "video/embed",
-            )
-          : []; // backend-specific categories don't show media items
-
   // Filter sample items
   const filteredSamples =
     activeCategory === "All"
       ? SAMPLE_PORTFOLIO
       : SAMPLE_PORTFOLIO.filter((i) => i.category === activeCategory);
 
-  const showSamples = !isLoading && !hasBackendItems && !hasMediaItems;
-  const showMedia = !isLoading && hasMediaItems;
+  const showSamples = !isLoading && !hasBackendItems;
   const showBackend = !isLoading && hasBackendItems;
 
   return (
@@ -537,7 +341,7 @@ export default function PortfolioPage() {
           transition={{ delay: 0.3 }}
           className="flex flex-wrap justify-center gap-2 mb-12"
         >
-          {categoriesToShow.map((cat) => (
+          {BACKEND_CATEGORIES.map((cat) => (
             <button
               type="button"
               key={cat}
@@ -575,16 +379,7 @@ export default function PortfolioPage() {
           </div>
         )}
 
-        {/* Media Manager items */}
-        {showMedia && filteredMedia.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-5">
-            {filteredMedia.map((item, i) => (
-              <MediaPortfolioCard key={item.id} item={item} index={i} />
-            ))}
-          </div>
-        )}
-
-        {/* Backend portfolio items */}
+        {/* Backend portfolio items (includes Media Manager uploads) */}
         {showBackend && filteredBackend.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredBackend.map((item: PortfolioItem, i: number) => (
@@ -608,7 +403,6 @@ export default function PortfolioPage() {
 
         {/* Empty state */}
         {!isLoading &&
-          filteredMedia.length === 0 &&
           filteredBackend.length === 0 &&
           filteredSamples.length === 0 && (
             <div

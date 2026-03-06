@@ -4,6 +4,7 @@ import { Copy, Sparkles, User } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useActor } from "../hooks/useActor";
 import {
   addUser,
   generateUserCode,
@@ -22,8 +23,9 @@ export default function UserIdentityModal({ onComplete }: Props) {
   const [name, setName] = useState("");
   const [generatedCode, setGeneratedCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { actor } = useActor();
 
-  const handleSubmitName = (e: React.FormEvent) => {
+  const handleSubmitName = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
@@ -41,6 +43,20 @@ export default function UserIdentityModal({ onComplete }: Props) {
       registeredAt: new Date().toISOString(),
       isBlocked: false,
     });
+
+    // Also save to central backend so admin can see all users across devices
+    // We store as a contact submission with a special prefix so admin knows it's a registration
+    try {
+      if (actor) {
+        await actor.submitContact(
+          trimmed,
+          `user_reg_${code}@aag.internal`,
+          `USER_REGISTRATION|code:${code}|name:${trimmed}|registeredAt:${new Date().toISOString()}`,
+        );
+      }
+    } catch {
+      // Backend save optional — localStorage is always the local source of truth
+    }
 
     setGeneratedCode(code);
     setStep("welcome");

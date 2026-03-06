@@ -25,12 +25,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { OrderRecord } from "../backend.d";
 import { useActor } from "../hooks/useActor";
 import { useBlobStorage } from "../hooks/useBlobStorage";
-import {
-  type Order,
-  type OrderStatus,
-  type PaymentStatus,
-  getOrders,
-} from "../utils/localData";
+import type { Order, OrderStatus, PaymentStatus } from "../utils/localData";
 
 // ─── Backend → Local converter ──────────────────────────────────────────────
 
@@ -546,53 +541,36 @@ export default function TrackOrderPage() {
       const trimmed = query.trim();
 
       if (searchMode === "orderId") {
-        // Try backend first
+        // Backend is the only source of truth
         if (actor) {
-          try {
-            const backendOrder = await actor.getOrderByOrderId(trimmed);
-            if (backendOrder) {
-              setResult(backendOrderToLocal(backendOrder));
-              return;
-            }
-          } catch {
-            // fall through to localStorage
+          const backendOrder = await actor.getOrderByOrderId(trimmed);
+          if (backendOrder) {
+            setResult(backendOrderToLocal(backendOrder));
+          } else {
+            setResult("not_found");
           }
+        } else {
+          setResult("not_found");
         }
-        // Fallback to localStorage
-        const orders = getOrders();
-        const found = orders.find(
-          (o) => o.orderId.toLowerCase() === trimmed.toLowerCase(),
-        );
-        setResult(found ?? "not_found");
       } else {
-        // Email search — try backend first
+        // Email search — backend only
         if (actor) {
-          try {
-            const backendOrders = await actor.getOrdersByEmail(trimmed);
-            if (backendOrders && backendOrders.length > 0) {
-              const converted = backendOrders
-                .map(backendOrderToLocal)
-                .sort(
-                  (a, b) =>
-                    new Date(b.createdAt).getTime() -
-                    new Date(a.createdAt).getTime(),
-                );
-              setResult(converted);
-              return;
-            }
-          } catch {
-            // fall through to localStorage
+          const backendOrders = await actor.getOrdersByEmail(trimmed);
+          if (backendOrders && backendOrders.length > 0) {
+            const converted = backendOrders
+              .map(backendOrderToLocal)
+              .sort(
+                (a, b) =>
+                  new Date(b.createdAt).getTime() -
+                  new Date(a.createdAt).getTime(),
+              );
+            setResult(converted);
+          } else {
+            setResult("not_found");
           }
+        } else {
+          setResult("not_found");
         }
-        // Fallback to localStorage
-        const orders = getOrders();
-        const found = orders
-          .filter((o) => o.email.toLowerCase() === trimmed.toLowerCase())
-          .sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          );
-        setResult(found.length > 0 ? found : "not_found");
       }
     } finally {
       setIsSearching(false);

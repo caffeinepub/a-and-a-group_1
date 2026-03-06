@@ -22,6 +22,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useBlobStorage, validateFile } from "../../hooks/useBlobStorage";
+import { useCreatePortfolio } from "../../hooks/useQueries";
 import {
   type MediaItem,
   type UploadError,
@@ -194,9 +195,21 @@ type UploadMode = "image" | "video";
 interface UploadCardProps {
   mode: UploadMode;
   onUploaded: () => void;
+  createPortfolioAsync: (data: {
+    title: string;
+    category: string;
+    description: string;
+    blobId: string;
+    mediaType: string;
+    serviceId: bigint | null;
+  }) => Promise<bigint>;
 }
 
-function UploadCard({ mode, onUploaded }: UploadCardProps) {
+function UploadCard({
+  mode,
+  onUploaded,
+  createPortfolioAsync,
+}: UploadCardProps) {
   const { uploadFile, uploadProgress, isUploading, retryCount } =
     useBlobStorage();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -270,7 +283,25 @@ function UploadCard({ mode, onUploaded }: UploadCardProps) {
         size: selectedFile.size,
         uploadedAt: new Date().toISOString(),
       };
+      // Save to localStorage for immediate local display
       addMediaItem(newItem);
+
+      // Also save to central backend so all devices can see it
+      const category = selectedFile.type.startsWith("image/")
+        ? "Images"
+        : "Videos";
+      try {
+        await createPortfolioAsync({
+          title: selectedFile.name,
+          category,
+          description: "",
+          blobId: hash,
+          mediaType: selectedFile.type,
+          serviceId: null,
+        });
+      } catch {
+        // Backend save failed silently — item still stored locally
+      }
 
       setUploadState("success");
       setRetryMsg("");
@@ -461,12 +492,25 @@ function UploadCard({ mode, onUploaded }: UploadCardProps) {
 
 // ─── URL Embed Card ──────────────────────────────────────────────────────────
 
-function UrlEmbedCard({ onAdded }: { onAdded: () => void }) {
+function UrlEmbedCard({
+  onAdded,
+  createPortfolioAsync,
+}: {
+  onAdded: () => void;
+  createPortfolioAsync: (data: {
+    title: string;
+    category: string;
+    description: string;
+    blobId: string;
+    mediaType: string;
+    serviceId: bigint | null;
+  }) => Promise<bigint>;
+}) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const trimmed = url.trim();
     if (!trimmed) {
       setError("Please enter a URL.");
@@ -487,7 +531,22 @@ function UrlEmbedCard({ onAdded }: { onAdded: () => void }) {
       size: 0,
       uploadedAt: new Date().toISOString(),
     };
+    // Save to localStorage for immediate local display
     addMediaItem(newItem);
+
+    // Also save to central backend so all devices can see it
+    try {
+      await createPortfolioAsync({
+        title: extractEmbedTitle(trimmed),
+        category: "Videos",
+        description: "",
+        blobId: `embed::${trimmed}`,
+        mediaType: "video/embed",
+        serviceId: null,
+      });
+    } catch {
+      // Backend save failed silently — item still stored locally
+    }
 
     setSuccess(true);
     setUrl("");
@@ -891,6 +950,7 @@ function UploadErrorLog() {
 
 export default function AdminMediaManagerTab() {
   const [refreshKey, setRefreshKey] = useState(0);
+  const { mutateAsync: createPortfolioAsync } = useCreatePortfolio();
 
   const handleUploaded = () => setRefreshKey((k) => k + 1);
 
@@ -908,12 +968,23 @@ export default function AdminMediaManagerTab() {
 
       {/* Upload Cards + Embed */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <UploadCard mode="image" onUploaded={handleUploaded} />
-        <UploadCard mode="video" onUploaded={handleUploaded} />
+        <UploadCard
+          mode="image"
+          onUploaded={handleUploaded}
+          createPortfolioAsync={createPortfolioAsync}
+        />
+        <UploadCard
+          mode="video"
+          onUploaded={handleUploaded}
+          createPortfolioAsync={createPortfolioAsync}
+        />
       </div>
 
       {/* URL Embed Card */}
-      <UrlEmbedCard onAdded={handleUploaded} />
+      <UrlEmbedCard
+        onAdded={handleUploaded}
+        createPortfolioAsync={createPortfolioAsync}
+      />
 
       {/* Media Grid */}
       <div key={refreshKey}>

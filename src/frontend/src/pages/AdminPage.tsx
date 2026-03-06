@@ -54,6 +54,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
+  useListAllOrders,
   useListPortfolio,
   useListProblemReports,
   useListReviews,
@@ -68,7 +69,6 @@ import {
   blockUser,
   getCurrentUser,
   getOfficers,
-  getOrders,
   getUser,
   getUsers,
   isOfficer,
@@ -498,21 +498,41 @@ function DashboardSection() {
   const pendingReports = allDashboardReports.filter(
     (r) => r.status === "pending",
   ).length;
+  const { data: allOrders = [] } = useListAllOrders();
 
   useEffect(() => {
     setUsers(getUsers());
     setOfficers(getOfficers());
-    setOrderCount(getOrders().length);
-  }, []);
+    // Use backend orders count — central server is the source of truth
+    setOrderCount(allOrders.length);
+  }, [allOrders]);
 
-  const unreadCount = submissions?.filter((s) => !s.isRead).length ?? 0;
+  // Count unique users from backend submissions (user registrations saved with USER_REGISTRATION prefix)
+  const backendUserCount = submissions
+    ? new Set(
+        submissions
+          .filter((s) => s.projectDetails?.startsWith("USER_REGISTRATION|"))
+          .map((s) =>
+            s.email.replace("user_reg_", "").replace("@aag.internal", ""),
+          ),
+      ).size
+    : 0;
+
+  // Use backend submission count as the authoritative user count
+  const totalUserCount = backendUserCount;
+  const unreadCount =
+    submissions?.filter(
+      (s) => !s.isRead && !s.projectDetails?.startsWith("USER_REGISTRATION|"),
+    ).length ?? 0;
 
   const cards = [
     {
       label: "Total Registered Users",
-      value: users.length,
+      value: totalUserCount,
       icon: <Users className="w-5 h-5" />,
       color: "primary",
+      loading: subLoading,
+      // Value comes from backend submissions (central server) only
     },
     {
       label: "Active Officers",
