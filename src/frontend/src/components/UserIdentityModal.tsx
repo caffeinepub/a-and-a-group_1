@@ -4,7 +4,7 @@ import { Copy, Sparkles, User } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useActor } from "../hooks/useActor";
+import { useSubmitContact } from "../hooks/useQueries";
 import {
   addUser,
   generateUserCode,
@@ -23,7 +23,9 @@ export default function UserIdentityModal({ onComplete }: Props) {
   const [name, setName] = useState("");
   const [generatedCode, setGeneratedCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { actor } = useActor();
+
+  // useSubmitContact already has waitForActor built in — handles actor initialization reliably
+  const { mutateAsync: submitContact } = useSubmitContact();
 
   const handleSubmitName = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +37,7 @@ export default function UserIdentityModal({ onComplete }: Props) {
     // Generate unique code
     const code = generateUserCode();
 
-    // Persist to localStorage
+    // Persist to localStorage (this device's identity)
     setCurrentUser(trimmed, code);
     addUser({
       userCode: code,
@@ -44,18 +46,16 @@ export default function UserIdentityModal({ onComplete }: Props) {
       isBlocked: false,
     });
 
-    // Also save to central backend so admin can see all users across devices
-    // We store as a contact submission with a special prefix so admin knows it's a registration
+    // Save to central backend via submitContact (which uses waitForActor internally)
+    // This ensures admin can see all registered users across all devices
     try {
-      if (actor) {
-        await actor.submitContact(
-          trimmed,
-          `user_reg_${code}@aag.internal`,
-          `USER_REGISTRATION|code:${code}|name:${trimmed}|registeredAt:${new Date().toISOString()}`,
-        );
-      }
+      await submitContact({
+        name: trimmed,
+        email: `user_reg_${code}@aag.internal`,
+        projectDetails: `USER_REGISTRATION|code:${code}|name:${trimmed}|registeredAt:${new Date().toISOString()}`,
+      });
     } catch {
-      // Backend save optional — localStorage is always the local source of truth
+      // Backend save is best-effort — localStorage identity still works
     }
 
     setGeneratedCode(code);

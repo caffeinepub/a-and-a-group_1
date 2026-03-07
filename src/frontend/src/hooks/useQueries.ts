@@ -7,8 +7,30 @@ import type {
   ProblemReport,
   Review,
   Service,
+  backendInterface,
 } from "../backend.d";
 import { useActor } from "./useActor";
+
+// Helper: wait for actor to be available (up to 15 seconds)
+async function waitForActor(
+  queryClient: ReturnType<typeof useQueryClient>,
+  actorFromHook: backendInterface | null,
+): Promise<backendInterface> {
+  // If actor is already available, return immediately
+  if (actorFromHook) return actorFromHook;
+
+  // Poll queryClient cache for actor
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    // Try to get from cache
+    const cached = queryClient
+      .getQueriesData<backendInterface>({ queryKey: ["actor"] })
+      .find(([, data]) => data != null);
+    if (cached?.[1]) return cached[1];
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  throw new Error("Connection timeout. Please refresh the page and try again.");
+}
 
 // ─── Services ──────────────────────────────────────────────────────────────
 
@@ -255,14 +277,19 @@ export function useDeleteReview() {
 
 export function useSubmitContact() {
   const { actor } = useActor();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: {
       name: string;
       email: string;
       projectDetails: string;
     }) => {
-      if (!actor) throw new Error("Actor not available");
-      return actor.submitContact(data.name, data.email, data.projectDetails);
+      const resolvedActor = await waitForActor(queryClient, actor);
+      return resolvedActor.submitContact(
+        data.name,
+        data.email,
+        data.projectDetails,
+      );
     },
   });
 }
@@ -273,8 +300,15 @@ export function useListSubmissions() {
     queryKey: ["submissions"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.listSubmissions();
+      try {
+        return await actor.listSubmissions();
+      } catch {
+        return [];
+      }
     },
+    // Refetch every 10 seconds to pick up new user registrations and contact submissions
+    refetchInterval: 10_000,
+    staleTime: 0,
     enabled: !!actor && !isFetching,
   });
 }
@@ -309,6 +343,7 @@ export function useDeleteSubmission() {
 
 export function useSubmitProblemReport() {
   const { actor } = useActor();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: {
       name: string;
@@ -316,8 +351,8 @@ export function useSubmitProblemReport() {
       orderId: string | null;
       description: string;
     }) => {
-      if (!actor) throw new Error("Actor not available");
-      return actor.submitProblemReport(
+      const resolvedActor = await waitForActor(queryClient, actor);
+      return resolvedActor.submitProblemReport(
         data.name,
         data.email,
         data.orderId,
@@ -339,6 +374,9 @@ export function useListProblemReports() {
         return [];
       }
     },
+    // Refetch every 10 seconds so admin sees new reports
+    refetchInterval: 10_000,
+    staleTime: 0,
     enabled: !!actor && !isFetching,
   });
 }
@@ -383,6 +421,8 @@ export function useGetPaymentSettings() {
         return null;
       }
     },
+    // Refetch every 30 seconds so all devices get fresh payment settings
+    refetchInterval: 30_000,
     enabled: !!actor && !isFetching,
   });
 }
@@ -398,8 +438,8 @@ export function useUpdatePaymentSettings() {
       ifscCode: string;
       qrCodeBlobId: string;
     }) => {
-      if (!actor) throw new Error("Actor not available");
-      return actor.updatePaymentSettings(
+      const resolvedActor = await waitForActor(queryClient, actor);
+      return resolvedActor.updatePaymentSettings(
         data.upiId,
         data.accountHolderName,
         data.accountNumber,
@@ -442,8 +482,8 @@ export function useSubmitOrder() {
       budget: string;
       deadline: string;
     }) => {
-      if (!actor) throw new Error("Actor not available");
-      return actor.submitOrder(
+      const resolvedActor = await waitForActor(queryClient, actor);
+      return resolvedActor.submitOrder(
         data.orderId,
         data.name,
         data.email,
@@ -489,11 +529,18 @@ export function useListAllOrders() {
     queryFn: async () => {
       if (!actor) return [];
       try {
-        return await actor.listAllOrders();
-      } catch {
+        const result = await actor.listAllOrders();
+        return result;
+      } catch (err) {
+        // Silently return empty — likely not admin or actor not initialized yet
+        console.warn("[useListAllOrders] failed:", err);
         return [];
       }
     },
+    // Refetch every 10 seconds so admin sees new orders, and retries after auth
+    refetchInterval: 10_000,
+    // Don't cache stale — always refetch to pick up new orders
+    staleTime: 0,
     enabled: !!actor && !isFetching,
   });
 }

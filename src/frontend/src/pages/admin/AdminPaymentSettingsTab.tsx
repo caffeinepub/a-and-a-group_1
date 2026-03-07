@@ -48,32 +48,18 @@ export default function AdminPaymentSettingsTab() {
   const { mutateAsync: updatePaymentSettings } = useUpdatePaymentSettings();
   const { uploadFile, getFileUrl } = useBlobStorage();
 
-  // Load settings: localStorage first (fastest), then backend as source of truth
+  // Load settings from backend only (central server = source of truth for cross-device)
   useEffect(() => {
     const loadSettings = async () => {
-      // Try localStorage first for a fast initial load
-      let localParsed: Partial<typeof DEFAULTS & { qrCodeBlobId: string }> = {};
-      try {
-        const raw = localStorage.getItem("aag_payment_settings");
-        if (raw) localParsed = JSON.parse(raw);
-      } catch {
-        // ignore
-      }
-
-      const upiId =
-        backendSettings?.upiId || localParsed.upiId || DEFAULTS.upiId;
+      // Use backend settings as the only source of truth — no localStorage fallback
+      // so all devices see the same data
+      const upiId = backendSettings?.upiId || DEFAULTS.upiId;
       const accountHolderName =
-        backendSettings?.accountHolderName ||
-        localParsed.accountHolderName ||
-        DEFAULTS.accountHolderName;
+        backendSettings?.accountHolderName || DEFAULTS.accountHolderName;
       const accountNumber =
-        backendSettings?.accountNumber ||
-        localParsed.accountNumber ||
-        DEFAULTS.accountNumber;
-      const ifscCode =
-        backendSettings?.ifscCode || localParsed.ifscCode || DEFAULTS.ifscCode;
-      const qrCodeBlobId =
-        backendSettings?.qrCodeBlobId || localParsed.qrCodeBlobId || "";
+        backendSettings?.accountNumber || DEFAULTS.accountNumber;
+      const ifscCode = backendSettings?.ifscCode || DEFAULTS.ifscCode;
+      const qrCodeBlobId = backendSettings?.qrCodeBlobId || "";
 
       let qrPreviewUrl = "";
       if (qrCodeBlobId) {
@@ -132,34 +118,24 @@ export default function AdminPaymentSettingsTab() {
   const handleSave = async () => {
     setIsSaving(true);
 
-    // Always save to localStorage first as primary (instant, cross-device within same origin)
-    const localSettings = {
+    const settingsPayload = {
       upiId: form.upiId,
       accountHolderName: form.accountHolderName,
       accountNumber: form.accountNumber,
       ifscCode: form.ifscCode,
       qrCodeBlobId: form.qrCodeBlobId,
     };
-    try {
-      localStorage.setItem(
-        "aag_payment_settings",
-        JSON.stringify(localSettings),
-      );
-    } catch {
-      // ignore storage errors
-    }
 
-    // Attempt backend save for cross-device sync
+    // Save ONLY to backend (central server) so all devices see the same data
     try {
-      await updatePaymentSettings(localSettings);
+      await updatePaymentSettings(settingsPayload);
       toast.success(
-        "Payment settings saved successfully! Changes visible to all users.",
+        "Payment settings saved! All users will now see the updated payment details.",
       );
     } catch (err: unknown) {
-      // localStorage save already succeeded — settings will persist on this device
       console.error("[AdminPaymentSettings] Backend save failed:", err);
-      toast.success(
-        "Settings saved locally. Note: cross-device sync may be delayed.",
+      toast.error(
+        "Failed to save settings. Please check your connection and try again.",
       );
     } finally {
       setIsSaving(false);

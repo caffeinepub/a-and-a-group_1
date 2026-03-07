@@ -29,7 +29,6 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useActor } from "../hooks/useActor";
 import { useSubmitProblemReport } from "../hooks/useQueries";
 import type { AIChatLog, AIChatMessage } from "../utils/localData";
 import { getCurrentUser, saveChatLog } from "../utils/localData";
@@ -54,9 +53,14 @@ interface BotResult {
   canResolve: boolean;
 }
 
-function getAIResponse(input: string, _userCode: string): BotResult {
+function getAIResponse(
+  input: string,
+  _userCode: string,
+  userName?: string,
+): BotResult {
   const isHindi = detectHindi(input);
   const q = input.toLowerCase();
+  const nameGreet = userName && userName !== "Guest" ? ` **${userName}**` : "";
 
   // ── Order lookup ────────────────────────────────────────────────────────
   // NOTE: Order lookup in AI chat is limited to guiding users to the My Orders
@@ -79,12 +83,18 @@ function getAIResponse(input: string, _userCode: string): BotResult {
     q.includes("hey") ||
     q.includes("नमस्ते") ||
     q.includes("हेलो") ||
-    q.includes("हाय")
+    q.includes("हाय") ||
+    q.includes("hii") ||
+    q.includes("helo") ||
+    q.includes("bhai") ||
+    q.includes("yaar") ||
+    q.includes("kya hal") ||
+    q.includes("kaise ho")
   ) {
     return {
       text: isHindi
-        ? "नमस्ते! 👋 मैं A AND A GROUP का AI Assistant हूँ। मैं आपकी मदद कर सकता हूँ:\n\n• **Order Place करना**\n• **Payment करना**\n• **Screenshot Upload करना**\n• **Order Track करना**\n\nआप क्या जानना चाहते हैं?"
-        : "Hello! 👋 I'm the A AND A GROUP AI Assistant. I can help you with:\n\n• **Placing an order**\n• **Making payment**\n• **Uploading screenshots**\n• **Tracking your order**\n\nWhat would you like to know?",
+        ? `नमस्ते${nameGreet}! 👋 मैं A AND A GROUP का AI Assistant हूँ। मैं आपकी मदद कर सकता हूँ:\n\n• **Order Place करना**\n• **Payment करना**\n• **Screenshot Upload करना**\n• **Order Track करना**\n\nआप क्या जानना चाहते हैं? 😊`
+        : `Hello${nameGreet}! 👋 I'm the A AND A GROUP AI Assistant. I can help you with:\n\n• **Placing an order**\n• **Making payment**\n• **Uploading screenshots**\n• **Tracking your order**\n\nWhat would you like to know? 😊`,
       canResolve: true,
     };
   }
@@ -328,24 +338,26 @@ interface TicketData {
   description: string;
 }
 
-const EMPTY_TICKET: TicketData = {
-  name: "",
-  email: "",
-  orderId: "",
-  issueType: "",
-  description: "",
-};
-
 function TicketForm({
   onSubmit,
   onCancel,
   isHindi,
+  defaultName,
+  defaultEmail,
 }: {
   onSubmit: (data: TicketData) => void;
   onCancel: () => void;
   isHindi: boolean;
+  defaultName?: string;
+  defaultEmail?: string;
 }) {
-  const [form, setForm] = useState<TicketData>(EMPTY_TICKET);
+  const [form, setForm] = useState<TicketData>({
+    name: defaultName || "",
+    email: defaultEmail || "",
+    orderId: "",
+    issueType: "",
+    description: "",
+  });
   const set = (k: keyof TicketData) => (v: string) =>
     setForm((p) => ({ ...p, [k]: v }));
 
@@ -509,8 +521,10 @@ function AIChatPanel({ onClose }: { onClose: () => void }) {
     id: "greeting",
     role: "bot",
     text: isAdmin
-      ? "Hello Admin! 👋 I'm the AAG AI Assistant. You have full access. Ask about any order, or say 'show all orders'."
-      : "Hello! 👋 I'm the A AND A GROUP AI Assistant.\n\nI can help you with:\n• **Placing an order**\n• **Payment**\n• **Uploading screenshots**\n• **Tracking your order**\n\nWhat would you like help with? (Hindi / English दोनों में पूछ सकते हैं!)",
+      ? `Hello Admin! 👋 I'm the AAG AI Assistant. You have full access.\n\nAsk about any order, payment, or say 'show orders summary'.`
+      : userName !== "Guest"
+        ? `Hello **${userName}**! 👋 Welcome to A AND A GROUP.\n\nYour User Code: \`${userCode}\`\n\nI can help you with:\n• **Order place karna**\n• **Payment karna**\n• **Screenshot upload karna**\n• **Order track karna**\n\nHindi ya English mein poochh sakte hain! 😊`
+        : "Hello! 👋 I'm the A AND A GROUP AI Assistant.\n\nI can help you with:\n• **Placing an order**\n• **Payment**\n• **Uploading screenshots**\n• **Tracking your order**\n\nWhat would you like help with? (Hindi / English दोनों में पूछ सकते हैं!)",
     timestamp: new Date(),
   };
 
@@ -520,7 +534,6 @@ function AIChatPanel({ onClose }: { onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<"chat" | "support">("chat");
   const scrollRef = useRef<HTMLDivElement>(null);
   const { mutateAsync: submitReport } = useSubmitProblemReport();
-  const { actor: actorForTicket, isFetching: actorFetching } = useActor();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on message change
   useEffect(() => {
@@ -572,7 +585,7 @@ function AIChatPanel({ onClose }: { onClose: () => void }) {
 
     // ~1 second typing animation then real response
     setTimeout(() => {
-      const result = getAIResponse(text, userCode);
+      const result = getAIResponse(text, userCode, userName);
       const botMsg: ChatMessage = {
         id: `b-${Date.now()}`,
         role: "bot",
@@ -622,7 +635,7 @@ function AIChatPanel({ onClose }: { onClose: () => void }) {
       ]);
       setInput("");
       setTimeout(() => {
-        const result = getAIResponse(text, userCode);
+        const result = getAIResponse(text, userCode, userName);
         const botMsg: ChatMessage = {
           id: `b-${Date.now()}`,
           role: "bot",
@@ -645,40 +658,24 @@ function AIChatPanel({ onClose }: { onClose: () => void }) {
   const handleTicketSubmit = async (data: TicketData) => {
     let backendId: bigint | null = null;
 
-    // If actor is still fetching, wait a moment for it to initialize
-    if (!actorForTicket && actorFetching) {
-      await new Promise((r) => setTimeout(r, 2000));
+    // Try to save to backend — waitForActor inside mutation handles initialization
+    try {
+      const result = await submitReport({
+        name: data.name,
+        email: data.email,
+        orderId: data.orderId || null,
+        description: `[${data.issueType}] ${data.description}`,
+      });
+      backendId = result ?? BigInt(0);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error("[Ticket] Submit failed:", errMsg);
+      toast.error(
+        "Failed to submit ticket. Please check your connection and try again.",
+      );
+      return;
     }
 
-    // Try up to 3 times to save to backend
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const result = await submitReport({
-          name: data.name,
-          email: data.email,
-          orderId: data.orderId || null,
-          description: `[${data.issueType}] ${data.description}`,
-        });
-        if (result !== undefined && result !== null) {
-          backendId = result;
-          break; // success — stop retrying
-        }
-        // If result is 0n (falsy bigint), treat as success with default ref
-        if (result === 0n || result === BigInt(0)) {
-          backendId = BigInt(0);
-          break;
-        }
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        console.error(`[Ticket] Attempt ${attempt + 1} failed:`, errMsg);
-        if (attempt < 2) {
-          // Wait before retry
-          await new Promise((r) => setTimeout(r, 1500));
-        }
-      }
-    }
-
-    // If backend failed after 3 retries, show error and stop
     if (backendId === null) {
       toast.error(
         "Failed to submit ticket. Please check your connection and try again.",
@@ -828,7 +825,11 @@ function AIChatPanel({ onClose }: { onClose: () => void }) {
                 <TicketForm
                   onSubmit={handleTicketSubmit}
                   onCancel={() => setShowTicketForm(false)}
-                  isHindi={false}
+                  isHindi={messages.some(
+                    (m) => m.role === "user" && detectHindi(m.text),
+                  )}
+                  defaultName={userName !== "Guest" ? userName : undefined}
+                  defaultEmail={undefined}
                 />
               </div>
             )}

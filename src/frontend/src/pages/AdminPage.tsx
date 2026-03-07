@@ -977,6 +977,9 @@ function OfficerManagementSection() {
   const [officers, setOfficers] = useState<Officer[]>(() => getOfficers());
   const [promoteCode, setPromoteCode] = useState("");
   const [codePreview, setCodePreview] = useState<SiteUser | null>(null);
+  const [codeFoundInBackend, setCodeFoundInBackend] = useState(false);
+  // When user not found in backend, admin enters name manually
+  const [manualName, setManualName] = useState("");
   const [codeError, setCodeError] = useState("");
   const [permissions, setPermissions] =
     useState<OfficerPermissions>(DEFAULT_PERMISSIONS);
@@ -990,11 +993,13 @@ function OfficerManagementSection() {
   const handleCodeChange = (val: string) => {
     setPromoteCode(val);
     setCodeError("");
+    setManualName("");
     if (val.length === 7) {
       // 1. Check localStorage (same device)
       const found = getUser(val);
       if (found) {
         setCodePreview(found);
+        setCodeFoundInBackend(true);
         setCodeError("");
         return;
       }
@@ -1004,27 +1009,33 @@ function OfficerManagementSection() {
         const backendFound = backendUsers.find((u) => u.userCode === val);
         if (backendFound) {
           setCodePreview(backendFound);
+          setCodeFoundInBackend(true);
           setCodeError("");
           return;
         }
       }
-      // 3. Allow promoting by code even if user not in backend yet
-      //    (user may have registered before backend sync was set up)
-      //    Show a generic preview so admin can still promote
+      // 3. Code entered but not found — show placeholder, ask admin to enter name
+      setCodeFoundInBackend(false);
       setCodePreview({
         userCode: val,
-        name: `User ${val}`,
+        name: "",
         registeredAt: new Date().toISOString(),
         isBlocked: false,
       });
       setCodeError("");
     } else {
       setCodePreview(null);
+      setCodeFoundInBackend(false);
     }
   };
 
   const handlePromote = () => {
     if (!codePreview) return;
+    const finalName = codeFoundInBackend ? codePreview.name : manualName.trim();
+    if (!finalName) {
+      toast.error("Please enter the user's name before promoting.");
+      return;
+    }
     if (isOfficer(codePreview.userCode)) {
       toast.error("This user is already an officer.");
       return;
@@ -1032,14 +1043,16 @@ function OfficerManagementSection() {
     setIsPromoting(true);
     addOfficer({
       userCode: codePreview.userCode,
-      name: codePreview.name,
+      name: finalName,
       promotedAt: new Date().toISOString(),
       permissions,
     });
-    toast.success(`${codePreview.name} promoted to Officer!`);
+    toast.success(`${finalName} promoted to Officer!`);
     setOfficers(getOfficers());
     setPromoteCode("");
     setCodePreview(null);
+    setCodeFoundInBackend(false);
+    setManualName("");
     setPermissions(DEFAULT_PERMISSIONS);
     setIsPromoting(false);
   };
@@ -1113,7 +1126,7 @@ function OfficerManagementSection() {
                 {codeError}
               </p>
             )}
-            {codePreview && (
+            {codePreview && codeFoundInBackend && (
               <div
                 data-ocid="admin.officers.preview.card"
                 className="flex items-center gap-3 p-3 rounded-lg bg-secondary border border-border"
@@ -1127,6 +1140,24 @@ function OfficerManagementSection() {
                     Code: {codePreview.userCode}
                   </span>
                 </div>
+              </div>
+            )}
+            {codePreview && !codeFoundInBackend && (
+              <div
+                data-ocid="admin.officers.manual_name.card"
+                className="space-y-2 p-3 rounded-lg bg-amber-500/8 border border-amber-500/25"
+              >
+                <p className="text-xs text-amber-400 font-body">
+                  User code {codePreview.userCode} not found in database. Enter
+                  the user's name to promote:
+                </p>
+                <Input
+                  data-ocid="admin.officers.manual_name.input"
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  placeholder="Enter user's name (e.g. Rahul)"
+                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground/50 focus:border-primary/50"
+                />
               </div>
             )}
           </div>
@@ -1165,7 +1196,11 @@ function OfficerManagementSection() {
           <Button
             onClick={handlePromote}
             data-ocid="admin.officers.promote.primary_button"
-            disabled={!codePreview || isPromoting}
+            disabled={
+              !codePreview ||
+              isPromoting ||
+              (!codeFoundInBackend && !manualName.trim())
+            }
             className="bg-primary text-primary-foreground hover:shadow-neon-blue-sm"
           >
             {isPromoting ? (
@@ -1665,7 +1700,9 @@ export default function AdminPage() {
     );
   }
 
-  // ── Internet Identity Login ───────────────────────────────────────────────
+  // ── Internet Identity Login (optional but needed for backend admin queries) ──
+  // After PIN verification, show II login. However if II is already authenticated,
+  // skip straight to dashboard.
   if (!isAuthenticated) {
     return (
       <main className="pt-24 pb-24 min-h-screen flex items-center justify-center">
@@ -1682,10 +1719,11 @@ export default function AdminPage() {
               Admin Identity
             </h1>
             <p className="text-muted-foreground font-body text-sm mb-2">
-              PIN verified. Now authenticate with Internet Identity.
+              PIN verified ✅ — Authenticate to load all data.
             </p>
             <p className="text-xs text-muted-foreground/60 font-body mb-8">
-              Only the master admin principal has access.
+              This step connects the Admin Portal to the central server so you
+              can see all orders, reports, and user data.
             </p>
             <Button
               onClick={handleLogin}
@@ -1702,8 +1740,8 @@ export default function AdminPage() {
                 "Login with Internet Identity"
               )}
             </Button>
-            <p className="text-xs text-muted-foreground font-body mt-4">
-              Secure auth via Internet Computer identity
+            <p className="text-xs text-muted-foreground/60 font-body mt-4">
+              Internet Identity is a secure, free login — no password needed.
             </p>
           </motion.div>
         </div>
@@ -1711,7 +1749,9 @@ export default function AdminPage() {
     );
   }
 
-  // ── Access Guard — user code check ───────────────────────────────────────
+  // ── Access Guard — user code check (only for non-officers) ───────────────
+  // PIN 1207 auto-sets user code to 1649963, so master admin always passes here.
+  // Officers are checked via localStorage officer list.
   const currentUser = getCurrentUser();
   const currentUserCode = currentUser?.code ?? "";
   const isMasterAdmin = currentUserCode === MASTER_ADMIN_CODE;
@@ -1734,15 +1774,15 @@ export default function AdminPage() {
               Access Denied
             </h1>
             <p className="text-muted-foreground font-body text-sm mb-2">
-              Your user code{" "}
+              PIN verified, but user code{" "}
               <span className="font-mono text-foreground">
                 {currentUserCode || "unknown"}
               </span>{" "}
-              does not have Admin or Officer access.
+              does not match the master admin code.
             </p>
             <p className="text-xs text-muted-foreground/60 font-body mb-8">
-              Only the permanent Admin (code: 1649963) and assigned Officers can
-              access the Admin Portal.
+              If you are the admin, please clear your browser storage and
+              re-enter the PIN.
             </p>
             <Button
               onClick={handleLogout}

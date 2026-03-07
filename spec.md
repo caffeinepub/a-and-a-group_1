@@ -1,40 +1,41 @@
 # A AND A GROUP
 
 ## Current State
-The Motoko backend already has all required data functions:
-- `submitOrder` / `getOrderByOrderId` / `getOrdersByEmail` / `listAllOrders` / `updateOrderStatus` / `updateOrderPaymentStatus` / `updateOrderScreenshot`
-- `submitProblemReport` / `listProblemReports` / `updateProblemReportStatus` / `deleteProblemReport`
-- `getPaymentSettings` / `updatePaymentSettings`
-- `submitContact` (used for user registration tracking)
+The app has a full Motoko backend (central server) with: orders, problemReports, paymentSettings, contactSubmissions (used to store user registrations), portfolio, reviews, services. The frontend has React with localStorage-heavy patterns that prevent cross-device sync.
 
-The frontend saves data to **localStorage first** and calls the backend as a fire-and-forget. When the backend call fails silently, data is only local. Different phones/browsers each have their own localStorage, so data is never shared.
+**Root cause of all reported bugs:**  
+Most data reads/writes still fall back to localStorage. The Motoko backend is fully functional but not consistently called. Specific broken flows:
+
+1. **UserIdentityModal**: Registers user to localStorage immediately, then TRIES to save to backend — but the actor polling loop re-reads the same `actor` ref (closure problem) and never actually gets an updated actor. So backend save never happens.
+2. **AdminPage user search**: Calls `parseBackendUsers(submissions)` but also mixes in `getUsers()` from localStorage. Cross-device searches fail because localStorage only has data from the current device.
+3. **AdminPaymentSettingsTab**: Saves to localStorage FIRST, then tries backend. If backend fails (auth issue or not-yet-initialized), it silently ignores and shows "saved locally". Clients on other phones never see the QR code.
+4. **ContactPage PaymentSection**: Reads QR from `backendSettings?.qrCodeBlobId || localSettings.qrCodeBlobId`. If localStorage has a stale/different value it overrides the backend setting.
+5. **FloatingWidgets AI Chat**: Ticket form does not auto-fill current user name/email/code. AI is basic keyword matching with no context about the specific user.
 
 ## Requested Changes (Diff)
 
 ### Add
-- Await-first approach: frontend **awaits** backend calls for orders, problem reports, and payment settings before showing success
-- Show loading state while backend is being called
-- Show error toast if backend call fails so user knows to retry
+- AI chat ticket form auto-fills: name, email, user code from `getCurrentUser()` (localStorage is fine here since it IS the current device's identity)
+- Admin user management: properly merge backend-parsed users with localStorage users, deduplicate by userCode, prioritize backend data
+- Admin "Total Users" count comes from backend submissions count (cross-device)
+- Officer management: when adding an officer by code, if not found in localStorage, show a form to enter their name and create the officer entry
+- AI assistant: smarter context-aware responses including user name display, more Hindi keywords coverage
 
 ### Modify
-- `ContactPage.tsx`: `handleSubmit` — await `submitOrderBackend` first; only mark submitted if backend succeeds. Remove `addOrder` (localStorage) as primary path; keep it only as an offline emergency fallback.
-- `FloatingWidgets.tsx` `handleTicketSubmit`: await `submitReport` backend call; show error if it fails; remove the localStorage fallback path for tickets.
-- `AdminPaymentSettingsTab.tsx` (or wherever payment settings save happens): ensure it calls `updatePaymentSettings` and awaits it; remove the localStorage `setPaymentSettings` as primary.
-- `ContactPage.tsx` `PaymentSection`: always fetch from `useGetPaymentSettings` (backend); remove local payment settings fallback from `getLocalPaymentSettings` to avoid confusion.
-- `TrackOrderPage.tsx`: remove localStorage fallback for order search — if backend returns null/empty, show "not found". This ensures clients only see real centralized orders.
-- `AdminOrdersTab.tsx`: already reads from `useListAllOrders` (backend) — no change needed.
-- `AdminReportedIssuesTab.tsx`: confirm it reads from `useListProblemReports` (backend) — fix if still using localStorage.
-- `AdminPage.tsx` `DashboardSection`: "Total Registered Users" count — use `submitContact` registrations from backend instead of localStorage `getUsers()`.
+- **UserIdentityModal**: Fix the actor polling — use `waitForActorGlobal` pattern (poll `window.__aag_actor` or use a dedicated exported promise) rather than re-reading a stale closure ref
+- **AdminPaymentSettingsTab `handleSave`**: Remove localStorage save. Only save to backend. Show proper error if backend fails instead of silent fallback
+- **ContactPage `PaymentSection`**: Remove localStorage fallback entirely. Read only from `backendSettings`. Show loading state until backend data arrives
+- **AdminPage `parseBackendUsers`**: Make this the primary source. Merge with localStorage but give backend precedence
+- **FloatingWidgets**: Auto-fill ticket form with current user's name and email from localStorage (since that IS their identity on this device); display user name in greeting
 
 ### Remove
-- `addOrder` localStorage call as primary submission path (keep only as emergency fallback)
-- `addReport` localStorage call in ticket submission (remove entirely)
-- `getLocalPaymentSettings` fallback in PaymentSection (use backend-only)
+- `localStorage.setItem("aag_payment_settings", ...)` write in AdminPaymentSettingsTab
+- `const localSettings = localStorage.getItem("aag_payment_settings")` read in ContactPage PaymentSection
+- `localParsed` fallback chain in AdminPaymentSettingsTab
 
 ## Implementation Plan
-1. Fix `ContactPage.tsx` order submission: await backend `submitOrder`, show loading, show error if it fails. Only mark submitted=true after backend success.
-2. Fix `FloatingWidgets.tsx` ticket submission: await backend `submitProblemReport`, show error toast if fails, no localStorage fallback.
-3. Fix `AdminReportedIssuesTab.tsx`: confirm it uses `useListProblemReports` hook (backend), not localStorage `getReports()`.
-4. Fix `PaymentSection` in `ContactPage.tsx`: remove local payment settings merge, use backend-only via `useGetPaymentSettings`.
-5. Fix `TrackOrderPage.tsx`: remove localStorage fallback for order search — backend is the only source of truth.
-6. Fix `AdminPaymentSettingsTab.tsx`: ensure save calls backend `updatePaymentSettings` and awaits.
+1. Fix `UserIdentityModal.tsx` — export a `waitForActor` utility that uses the `useActor` hook's actor ref shared via a module-level variable, OR simply use `waitForActor` from useQueries.ts pattern but pass it to the component. The simplest fix: import `useSubmitContact` from useQueries (which already has `waitForActor` built in) and call it instead of calling `currentActor.submitContact` directly.
+2. Fix `AdminPaymentSettingsTab.tsx` — remove localStorage write/read, throw error clearly if backend save fails
+3. Fix `ContactPage.tsx` — remove localStorage fallback for payment settings, show skeleton until `backendSettings` loads  
+4. Fix `AdminPage.tsx` — improve `parseBackendUsers` to properly merge, fix total users count display
+5. Fix `FloatingWidgets.tsx` — auto-fill ticket form with user info, display user name in greeting, add more Hindi keyword coverage

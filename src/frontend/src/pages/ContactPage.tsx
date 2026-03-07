@@ -27,7 +27,6 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useActor } from "../hooks/useActor";
 import { useBlobStorage, validateFile } from "../hooks/useBlobStorage";
 import {
   useGetPaymentSettings,
@@ -98,39 +97,16 @@ function PaymentSection({ orderId }: { orderId: string }) {
   const { getFileUrl } = useBlobStorage();
   const [qrUrl, setQrUrl] = useState<string>("");
 
-  // Read from localStorage first for fast cross-device display, fall back to backend
-  const localSettings = (() => {
-    try {
-      const raw = localStorage.getItem("aag_payment_settings");
-      if (raw)
-        return JSON.parse(raw) as Partial<
-          typeof DEFAULT_PAYMENT & { qrCodeBlobId: string }
-        >;
-    } catch {
-      /* ignore */
-    }
-    return {};
-  })();
-
+  // Use ONLY backend settings as source of truth — no localStorage fallback
+  // This ensures all users on all devices see the same payment details
   const settings = {
-    upiId:
-      backendSettings?.upiId || localSettings.upiId || DEFAULT_PAYMENT.upiId,
+    upiId: backendSettings?.upiId || DEFAULT_PAYMENT.upiId,
     accountHolderName:
-      backendSettings?.accountHolderName ||
-      localSettings.accountHolderName ||
-      DEFAULT_PAYMENT.accountHolderName,
+      backendSettings?.accountHolderName || DEFAULT_PAYMENT.accountHolderName,
     accountNumber:
-      backendSettings?.accountNumber ||
-      localSettings.accountNumber ||
-      DEFAULT_PAYMENT.accountNumber,
-    ifscCode:
-      backendSettings?.ifscCode ||
-      localSettings.ifscCode ||
-      DEFAULT_PAYMENT.ifscCode,
-    qrCodeBlobId:
-      backendSettings?.qrCodeBlobId ||
-      localSettings.qrCodeBlobId ||
-      DEFAULT_PAYMENT.qrCodeBlobId,
+      backendSettings?.accountNumber || DEFAULT_PAYMENT.accountNumber,
+    ifscCode: backendSettings?.ifscCode || DEFAULT_PAYMENT.ifscCode,
+    qrCodeBlobId: backendSettings?.qrCodeBlobId || DEFAULT_PAYMENT.qrCodeBlobId,
   };
 
   const qrBlobId = settings.qrCodeBlobId;
@@ -601,7 +577,6 @@ export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submittedOrder, setSubmittedOrder] = useState<Order | null>(null);
   const [backendOrderId, setBackendOrderId] = useState<bigint | null>(null);
-  const { actor, isFetching: actorFetching } = useActor();
   const { mutateAsync: submitContact } = useSubmitContact();
   const { mutateAsync: submitOrderBackend, isPending: isSubmittingOrder } =
     useSubmitOrder();
@@ -662,7 +637,7 @@ export default function ContactPage() {
       createdAt: new Date().toISOString(),
     };
 
-    // Await backend submission — this is the PRIMARY save (central server)
+    // Await backend submission — waitForActor inside mutation handles initialization
     let newBackendId: bigint | null = null;
     try {
       newBackendId = await submitOrderBackend({
@@ -1006,20 +981,10 @@ export default function ContactPage() {
                     <Button
                       type="submit"
                       data-ocid="order.submit.primary_button"
-                      disabled={
-                        isSubmittingOrder ||
-                        !form.service ||
-                        actorFetching ||
-                        !actor
-                      }
+                      disabled={isSubmittingOrder || !form.service}
                       className="w-full py-6 font-display font-bold text-base bg-primary text-primary-foreground hover:shadow-neon-blue transition-all duration-300 disabled:opacity-50"
                     >
-                      {actorFetching || !actor ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Connecting...
-                        </>
-                      ) : isSubmittingOrder ? (
+                      {isSubmittingOrder ? (
                         <>
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           Processing...

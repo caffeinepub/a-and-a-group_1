@@ -179,6 +179,16 @@ function buildCompletionEmailUrl(order: OrderLike): string {
   return `mailto:${order.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
+function buildConfirmationWhatsApp(order: OrderLike): string {
+  return `Hello ${order.name},\n\nYour order has been received. Our team has started working and will contact you within 24 hours.\n\nOrder ID: ${order.orderId}\nService: ${order.service}\nBudget: ${order.budget}\nDeadline: ${order.deadline}\n\nThank you!\n– A AND A GROUP`;
+}
+
+function buildConfirmationEmailUrl(order: OrderLike): string {
+  const subject = `Order Confirmation – A AND A GROUP – Order ID: ${order.orderId}`;
+  const body = `Hello ${order.name},\n\nWe have received your order. Our team has started working on it.\n\nOrder ID: ${order.orderId}\nService: ${order.service}\nBudget: ${order.budget}\nDeadline: ${order.deadline}\n\nYou will be contacted within 24 hours.\n\nThank you for choosing A AND A GROUP!\n\nBest regards,\nA AND A GROUP\nworkfora.agroup@zohomail.in`;
+  return `mailto:${order.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 export default function AdminOrdersTab() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterTab>("all");
@@ -524,6 +534,33 @@ export default function AdminOrdersTab() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                {/* Send Order Confirmation */}
+                <div className="flex items-center gap-2 pt-1 flex-wrap">
+                  <span className="text-[10px] text-muted-foreground font-body uppercase tracking-wide">
+                    Send Confirmation:
+                  </span>
+                  <a
+                    href={`https://wa.me/${order.whatsappNumber.replace(/[^\d]/g, "")}?text=${encodeURIComponent(buildConfirmationWhatsApp(order))}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-ocid={`admin.orders.confirm_wa.button.${i + 1}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-body font-medium bg-[#25D366]/10 border border-[#25D366]/25 text-[#25D366] hover:bg-[#25D366]/20 transition-all"
+                  >
+                    <MessageCircle className="w-3 h-3" />
+                    WhatsApp
+                  </a>
+                  <a
+                    href={buildConfirmationEmailUrl(order)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-ocid={`admin.orders.confirm_email.button.${i + 1}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-body font-medium bg-primary/10 border border-primary/25 text-primary hover:bg-primary/20 transition-all"
+                  >
+                    <Mail className="w-3 h-3" />
+                    Email
+                  </a>
                 </div>
 
                 {/* Notify Client when Completed */}
